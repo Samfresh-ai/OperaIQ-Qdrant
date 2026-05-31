@@ -1,0 +1,300 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  background: #090b0c;
+  color: #edf2ed;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px), #090b0c;
+  background-size: 34px 34px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.shell {
+  width: min(1440px, 100%);
+  margin: 0 auto;
+  padding: 28px;
+}
+
+.masthead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: end;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #30403a;
+}
+
+.eyebrow,
+.label,
+.collection span,
+.panel-title,
+label,
+small {
+  margin: 0;
+  color: #9daf9f;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  font-size: 12px;
+}
+
+h1 {
+  max-width: 920px;
+  margin: 8px 0 0;
+  font-size: clamp(34px, 5vw, 72px);
+  line-height: 0.95;
+  letter-spacing: 0;
+  color: #f4f0dd;
+}
+
+.collection {
+  min-width: 260px;
+  border: 1px solid #30403a;
+  background: #0f1413;
+  padding: 14px;
+}
+
+.collection strong {
+  display: block;
+  margin-top: 8px;
+  color: #a8ff60;
+  font-size: 18px;
+}
+
+.console {
+  display: grid;
+  grid-template-columns: minmax(280px, 370px) minmax(360px, 1fr) minmax(240px, 330px);
+  gap: 14px;
+  padding-top: 14px;
+  min-width: 0;
+}
+
+.panel {
+  border: 1px solid #30403a;
+  background: rgba(13, 18, 17, 0.96);
+  min-height: 520px;
+  min-width: 0;
+}
+
+.panel-title {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #30403a;
+  padding: 0 14px;
+  color: #d8decf;
+}
+
+button {
+  border: 1px solid #a8ff60;
+  background: #a8ff60;
+  color: #071005;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
+.intake {
+  padding-bottom: 14px;
+}
+
+label {
+  display: grid;
+  gap: 7px;
+  padding: 14px 14px 0;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #30403a;
+  background: #070908;
+  color: #edf2ed;
+  padding: 11px;
+  outline: none;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 180px;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #a8ff60;
+}
+
+.result {
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+}
+
+.narrative {
+  padding: 24px;
+  min-height: 130px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #30403a;
+  color: #f4f0dd;
+  font-size: 28px;
+  line-height: 1.12;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid #30403a;
+}
+
+.result-grid > div {
+  min-height: 116px;
+  padding: 16px;
+  border-right: 1px solid #30403a;
+}
+
+.result-grid > div:last-child {
+  border-right: 0;
+}
+
+.result-grid strong {
+  display: block;
+  margin-top: 12px;
+  color: #a8ff60;
+  font-size: 24px;
+  overflow-wrap: anywhere;
+}
+
+.evidence {
+  padding: 20px 24px 24px;
+}
+
+h2 {
+  margin: 18px 0 8px;
+  color: #ffb84d;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+p {
+  margin: 0;
+  color: #d8decf;
+  line-height: 1.5;
+}
+
+.instrumentation ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.instrumentation li {
+  min-height: 102px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 16px;
+  border-bottom: 1px solid #30403a;
+}
+
+.instrumentation strong {
+  color: #ffb84d;
+  text-transform: uppercase;
+  font-size: 13px;
+}
+
+.instrumentation span {
+  color: #d8decf;
+  line-height: 1.4;
+}
+
+@media (max-width: 1000px) {
+  .shell {
+    padding: 18px;
+  }
+
+  .masthead,
+  .console {
+    grid-template-columns: 1fr;
+  }
+
+  .collection {
+    min-width: 0;
+  }
+
+  .panel {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .shell {
+    padding: 12px;
+  }
+
+  .narrative {
+    font-size: 21px;
+    padding: 18px;
+  }
+
+  h1 {
+    max-width: calc(100vw - 24px);
+    font-size: 28px;
+    line-height: 1.08;
+    overflow-wrap: normal;
+  }
+
+  .masthead,
+  .console,
+  .collection,
+  .panel {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .panel-title {
+    gap: 10px;
+    justify-content: flex-start;
+    padding: 10px 14px;
+  }
+
+  button {
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+
+  .result-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .result-grid > div {
+    border-right: 0;
+    border-bottom: 1px solid #30403a;
+  }
+}

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sentinel Memory Layer</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="masthead">
+        <div>
+          <p class="eyebrow">Qdrant incident memory</p>
+          <h1>Sentinel remembers the last outage before it acts.</h1>
+        </div>
+        <div class="collection">
+          <span>Collection</span>
+          <strong>{{ collection }}</strong>
+        </div>
+      </header>
+
+      <section class="console">
+        <aside class="panel intake">
+          <div class="panel-title">
+            <span>Splunk alert</span>
+            <button id="run-demo" type="button">Run demo</button>
+          </div>
+          <label>
+            Org
+            <input id="orgId" value="{{ default_alert.orgId }}" />
+          </label>
+          <label>
+            Service
+            <input id="service" value="{{ default_alert.service }}" />
+          </label>
+          <label>
+            Severity
+            <select id="severity">
+              <option value="sev1" selected>sev1</option>
+              <option value="sev2">sev2</option>
+              <option value="sev3">sev3</option>
+            </select>
+          </label>
+          <label>
+            Alert title
+            <input id="title" value="{{ default_alert.title }}" />
+          </label>
+          <label>
+            Raw signal
+            <textarea id="message" rows="9">{{ default_alert.message }}</textarea>
+          </label>
+        </aside>
+
+        <section class="panel result">
+          <div class="panel-title">
+            <span>Qdrant recall</span>
+            <small id="status">waiting</small>
+          </div>
+          <div id="narrative" class="narrative">
+            Seed incidents, embed this alert, filter by tenant, and resolve.
+          </div>
+          <div class="result-grid">
+            <div>
+              <span class="label">similarity</span>
+              <strong id="similarity">--</strong>
+            </div>
+            <div>
+              <span class="label">action</span>
+              <strong id="action">--</strong>
+            </div>
+            <div>
+              <span class="label">tenant points</span>
+              <strong id="points">--</strong>
+            </div>
+          </div>
+          <div class="evidence">
+            <h2>Recalled incident</h2>
+            <p id="incident">No incident recalled yet.</p>
+            <h2>Verification</h2>
+            <p id="verification">No verification run yet.</p>
+            <h2>Learned memory</h2>
+            <p id="learned">No write-back yet.</p>
+          </div>
+        </section>
+
+        <aside class="panel instrumentation">
+          <div class="panel-title">
+            <span>Qdrant features</span>
+          </div>
+          <ul>
+            <li><strong>Point</strong><span>vector + incident payload</span></li>
+            <li><strong>Filter</strong><span>orgId keeps tenant memory isolated</span></li>
+            <li><strong>Index</strong><span>payload indexes created before seed ingest</span></li>
+            <li><strong>Learning</strong><span>resolved alert writes back as a new point</span></li>
+          </ul>
+        </aside>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
+
