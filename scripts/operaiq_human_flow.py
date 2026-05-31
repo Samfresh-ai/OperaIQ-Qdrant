@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -18,6 +19,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the OperaIQ human proof flow.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8097")
     parser.add_argument("--artifact-dir", default=None)
+    parser.add_argument("--api-token", default=os.getenv("OPERAIQ_API_TOKEN"))
+    parser.add_argument("--reset", action="store_true")
     args = parser.parse_args()
 
     settings = get_settings()
@@ -26,6 +29,7 @@ def main() -> None:
 
     generated_at = datetime.now(timezone.utc)
     checks: list[dict[str, object]] = []
+    headers = {"Authorization": f"Bearer {args.api_token}"} if args.api_token else {}
 
     def record(name: str, passed: bool, evidence: object) -> None:
         checks.append({"name": name, "passed": passed, "evidence": evidence})
@@ -40,13 +44,14 @@ def main() -> None:
             {"status": ui.status_code, "containsOperaIQ": "OperaIQ remembers" in ui.text},
         )
 
-        seed = client.post("/api/seed", params={"reset": "true"})
+        seed = client.post("/api/seed", params={"reset": str(args.reset).lower()}, headers=headers)
         seed_json = seed.json()
         record(
             "seeded_realistic_memories",
-            seed.status_code == 200 and seed_json.get("tenantPointCount") == 8,
+            seed.status_code == 200 and seed_json.get("tenantPointCount", 0) >= 8,
             seed_json,
         )
+        acme_count_before = int(seed_json["tenantPointCount"])
 
         health = client.get("/health")
         health_json = health.json()
@@ -67,7 +72,11 @@ def main() -> None:
         acme_alert = DEFAULT_ALERT.model_copy(
             update={"alertId": f"human-acme-{generated_at.strftime('%Y%m%d%H%M%S')}"}
         )
-        acme = client.post("/api/alerts/resolve", json=acme_alert.model_dump(mode="json"))
+        acme = client.post(
+            "/api/alerts/resolve",
+            json=acme_alert.model_dump(mode="json"),
+            headers=headers,
+        )
         acme_json = acme.json()
         record(
             "acme_alert_recalled_verified_and_learned",
@@ -75,7 +84,7 @@ def main() -> None:
             and acme_json["match"]["incidentId"] == "inc-redis-econnreset-2026-05-21"
             and acme_json["recommendation"] == "rotate_connection_pool"
             and acme_json["verification"]["verified"] is True
-            and acme_json["tenantPointCount"] == 9,
+            and acme_json["tenantPointCount"] == acme_count_before + 1,
             acme_json,
         )
 
@@ -86,7 +95,11 @@ def main() -> None:
                 "service": "settlement-api",
             }
         )
-        globex = client.post("/api/alerts/resolve", json=globex_alert.model_dump(mode="json"))
+        globex = client.post(
+            "/api/alerts/resolve",
+            json=globex_alert.model_dump(mode="json"),
+            headers=headers,
+        )
         globex_json = globex.json()
         record(
             "tenant_filter_blocks_cross_org_memory",

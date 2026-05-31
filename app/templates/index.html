@@ -23,9 +23,16 @@
       <section class="console">
         <aside class="panel intake">
           <div class="panel-title">
-            <span>Splunk alert</span>
-            <button id="run-demo" type="button">Run demo</button>
+            <span>Alert intake</span>
+            <div class="actions">
+              <button id="quick-run" type="button">Quick-run</button>
+              <button id="resolve-alert" type="button">Resolve</button>
+            </div>
           </div>
+          <label>
+            Operator token
+            <input id="apiToken" autocomplete="off" placeholder="Required for locked write paths" />
+          </label>
           <label>
             Org
             <input id="orgId" value="{{ default_alert.orgId }}" />
@@ -58,7 +65,7 @@
             <small id="status">waiting</small>
           </div>
           <div id="narrative" class="narrative">
-            Seed incidents, embed this alert, filter by tenant, recall the closest fix, and write the new memory back.
+            Seed incident memory, embed this alert, filter by tenant, recall the closest fix, and write the new memory back.
           </div>
           <div class="result-grid">
             <div>

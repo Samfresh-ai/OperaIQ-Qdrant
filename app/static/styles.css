@@ -107,9 +107,17 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   border-bottom: 1px solid #30403a;
   padding: 0 14px;
   color: #d8decf;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 button {
@@ -145,6 +153,10 @@ textarea {
   color: #edf2ed;
   padding: 11px;
   outline: none;
+}
+
+input::placeholder {
+  color: #64736a;
 }
 
 textarea {

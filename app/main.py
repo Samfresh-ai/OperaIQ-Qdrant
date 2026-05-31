@@ -1,6 +1,7 @@
 from functools import lru_cache
+from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -8,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from app.config import get_settings
 from app.embedder import FastEmbedEmbedder
 from app.memory_service import IncidentMemoryService
-from app.models import DemoResolution, HealthResponse, ReadinessResponse, SplunkAlert
+from app.models import HealthResponse, ReadinessResponse, ResolutionResult, SplunkAlert
 from app.seed import DEFAULT_ALERT, SEED_INCIDENTS
 
 
@@ -24,6 +25,18 @@ def get_memory_service() -> IncidentMemoryService:
         settings=settings,
         embedder=FastEmbedEmbedder(settings.embedding_model),
     )
+
+
+def require_write_access(authorization: str | None, *, allow_judge: bool = False) -> None:
+    settings = get_settings()
+    if settings.allow_unauthenticated_writes:
+        return
+    if allow_judge and settings.allow_judge_quick_run:
+        return
+    if not settings.operaiq_api_token:
+        raise HTTPException(status_code=503, detail="write token is not configured")
+    if authorization != f"Bearer {settings.operaiq_api_token}":
+        raise HTTPException(status_code=401, detail="valid OperaIQ write token required")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -58,7 +71,7 @@ def readiness() -> ReadinessResponse:
     settings = get_settings()
     report = get_memory_service().collection_report(org_id=DEFAULT_ALERT.orgId)
     issues = settings.production_issues()
-    warnings: list[str] = []
+    warnings = settings.production_warnings()
 
     if not report.exists:
         issues.append(f"Qdrant collection {report.collection} has not been created")
@@ -79,9 +92,13 @@ def readiness() -> ReadinessResponse:
 
 
 @app.post("/api/seed")
-def seed(reset: bool = True) -> dict[str, object]:
-    if reset and not get_settings().allow_demo_reset:
-        raise HTTPException(status_code=403, detail="demo reset is disabled")
+def seed(
+    reset: bool = False,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
+    require_write_access(authorization)
+    if reset and not get_settings().allow_judge_reset:
+        raise HTTPException(status_code=403, detail="collection reset is disabled")
 
     service = get_memory_service()
     try:
@@ -95,10 +112,14 @@ def seed(reset: bool = True) -> dict[str, object]:
     }
 
 
-@app.post("/api/demo/run", response_model=DemoResolution)
-def run_demo(reset: bool = True) -> DemoResolution:
-    if reset and not get_settings().allow_demo_reset:
-        raise HTTPException(status_code=403, detail="demo reset is disabled")
+@app.post("/api/judge/quick-run", response_model=ResolutionResult)
+def judge_quick_run(
+    reset: bool = False,
+    authorization: Annotated[str | None, Header()] = None,
+) -> ResolutionResult:
+    require_write_access(authorization, allow_judge=True)
+    if reset and not get_settings().allow_judge_reset:
+        raise HTTPException(status_code=403, detail="collection reset is disabled")
 
     service = get_memory_service()
     try:
@@ -110,8 +131,12 @@ def run_demo(reset: bool = True) -> DemoResolution:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@app.post("/api/alerts/resolve", response_model=DemoResolution)
-def resolve_alert(alert: SplunkAlert) -> DemoResolution:
+@app.post("/api/alerts/resolve", response_model=ResolutionResult)
+def resolve_alert(
+    alert: SplunkAlert,
+    authorization: Annotated[str | None, Header()] = None,
+) -> ResolutionResult:
+    require_write_access(authorization)
     service = get_memory_service()
     try:
         return service.resolve_alert(alert)

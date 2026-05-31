@@ -16,7 +16,7 @@ def test_api_health_readiness_resolve_and_tenant_isolation(monkeypatch) -> None:
     monkeypatch.setattr(main, "get_memory_service", lambda: service)
     client = TestClient(main.app)
 
-    seed_response = client.post("/api/seed?reset=true")
+    seed_response = client.post("/api/seed?reset=false")
     assert seed_response.status_code == 200
     assert seed_response.json()["tenantPointCount"] == 8
 
@@ -80,3 +80,49 @@ def test_resolve_without_seed_returns_clear_404(monkeypatch) -> None:
 
     assert response.status_code == 404
     assert "does not exist" in response.json()["detail"]
+
+
+def test_production_write_paths_require_token(monkeypatch) -> None:
+    service = IncidentMemoryService(
+        settings=Settings(
+            app_env="production",
+            qdrant_url=":memory:",
+            operaiq_api_token="secret-token",
+            allow_unauthenticated_writes=False,
+            allow_judge_quick_run=False,
+        ),
+        embedder=KeywordEmbedder(),
+    )
+
+    monkeypatch.setattr(main, "get_settings", lambda: service.settings)
+    monkeypatch.setattr(main, "get_memory_service", lambda: service)
+    client = TestClient(main.app)
+
+    blocked = client.post("/api/seed?reset=false")
+    assert blocked.status_code == 401
+
+    allowed = client.post(
+        "/api/seed?reset=false",
+        headers={"Authorization": "Bearer secret-token"},
+    )
+    assert allowed.status_code == 200
+
+
+def test_judge_quick_run_can_be_enabled_without_general_writes(monkeypatch) -> None:
+    service = IncidentMemoryService(
+        settings=Settings(
+            app_env="production",
+            qdrant_url=":memory:",
+            allow_unauthenticated_writes=False,
+            allow_judge_quick_run=True,
+        ),
+        embedder=KeywordEmbedder(),
+    )
+
+    monkeypatch.setattr(main, "get_settings", lambda: service.settings)
+    monkeypatch.setattr(main, "get_memory_service", lambda: service)
+    client = TestClient(main.app)
+
+    response = client.post("/api/judge/quick-run?reset=false")
+    assert response.status_code == 200
+    assert response.json()["recommendation"] == "rotate_connection_pool"

@@ -1,2 +1,1 @@
-"""Sentinel Memory Layer app."""
-
+"""OperaIQ incident memory app."""

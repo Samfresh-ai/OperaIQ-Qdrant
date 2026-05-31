@@ -1,0 +1,19 @@
+name: OperaIQ Render Keepalive
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    if: ${{ vars.OPERAIQ_RENDER_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping OperaIQ health
+        run: |
+          curl --fail --silent --show-error --max-time 60 "${{ vars.OPERAIQ_RENDER_URL }}/health"
+      - name: Ping OperaIQ readiness
+        run: |
+          curl --fail --silent --show-error --max-time 60 "${{ vars.OPERAIQ_RENDER_URL }}/runtime/readiness"

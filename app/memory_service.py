@@ -8,10 +8,10 @@ from qdrant_client import QdrantClient, models
 from app.config import Settings
 from app.embedder import Embedder
 from app.models import (
-    DemoResolution,
     IncidentMemory,
     QdrantCollectionReport,
     RecallMatch,
+    ResolutionResult,
     SplunkAlert,
     VerificationResult,
 )
@@ -113,7 +113,7 @@ class IncidentMemoryService:
         )
         return [match_from_point(point) for point in result.points]
 
-    def resolve_alert(self, alert: SplunkAlert) -> DemoResolution:
+    def resolve_alert(self, alert: SplunkAlert) -> ResolutionResult:
         matches = self.recall(alert, limit=3)
         if not matches:
             raise LookupError(f"No resolved memory found for orgId={alert.orgId}")
@@ -138,7 +138,7 @@ class IncidentMemoryService:
             f"Qdrant recalled a {match.similarityPercent}% similar incident, recommended "
             f"{match.actionTaken}, then OperaIQ verified error drop."
         )
-        return DemoResolution(
+        return ResolutionResult(
             alert=alert,
             match=match,
             recommendation=match.actionTaken,

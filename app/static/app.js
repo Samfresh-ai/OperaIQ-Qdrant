@@ -6,7 +6,9 @@ const pointsEl = document.querySelector("#points");
 const incidentEl = document.querySelector("#incident");
 const verificationEl = document.querySelector("#verification");
 const learnedEl = document.querySelector("#learned");
-const runButton = document.querySelector("#run-demo");
+const quickRunButton = document.querySelector("#quick-run");
+const resolveButton = document.querySelector("#resolve-alert");
+const apiTokenInput = document.querySelector("#apiToken");
 
 function alertPayload() {
   return {
@@ -34,35 +36,68 @@ function renderResult(result) {
 
 function renderError(error) {
   statusEl.textContent = "error";
-  narrativeEl.textContent = error.message || "Demo failed.";
+  narrativeEl.textContent = error.message || "Request failed.";
 }
 
-async function runDemo() {
-  runButton.disabled = true;
+function authHeaders() {
+  const token = apiTokenInput.value.trim();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function postJson(url, body = null) {
+  const headers = authHeaders();
+  if (body) {
+    headers["Content-Type"] = "application/json";
+  }
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) {
+    const bodyText = await response.text();
+    throw new Error(bodyText);
+  }
+  return response.json();
+}
+
+function setBusy(busy) {
+  quickRunButton.disabled = busy;
+  resolveButton.disabled = busy;
+}
+
+async function resolveCurrentAlert() {
+  setBusy(true);
   statusEl.textContent = "embedding";
   narrativeEl.textContent = "Embedding alert and querying Qdrant with orgId filter...";
 
   try {
-    await fetch("/api/seed?reset=true", { method: "POST" });
-    const response = await fetch("/api/alerts/resolve", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(alertPayload()),
-    });
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(body);
-    }
-    renderResult(await response.json());
+    await postJson("/api/seed?reset=false");
+    renderResult(await postJson("/api/alerts/resolve", alertPayload()));
   } catch (error) {
     renderError(error);
   } finally {
-    runButton.disabled = false;
+    setBusy(false);
   }
 }
 
-runButton.addEventListener("click", runDemo);
+async function runJudgeQuickRun() {
+  setBusy(true);
+  statusEl.textContent = "quick-run";
+  narrativeEl.textContent = "Running the optional judge quick-run against seeded incident memory...";
+
+  try {
+    renderResult(await postJson("/api/judge/quick-run?reset=false"));
+  } catch (error) {
+    renderError(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+quickRunButton.addEventListener("click", runJudgeQuickRun);
+resolveButton.addEventListener("click", resolveCurrentAlert);
 
 if (new URLSearchParams(window.location.search).get("autorun") === "1") {
-  runDemo();
+  runJudgeQuickRun();
 }

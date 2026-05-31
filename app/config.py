@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 from pathlib import Path
 
@@ -8,17 +8,47 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_str(name: str, default: str = "") -> str:
+    return os.getenv(name, default)
+
+
+def env_optional(name: str) -> str | None:
+    value = os.getenv(name)
+    return value or None
+
+
 @dataclass(frozen=True)
 class Settings:
-    app_name: str = os.getenv("APP_NAME", "OperaIQ")
-    app_env: str = os.getenv("APP_ENV", "development")
-    qdrant_url: str = os.getenv("QDRANT_URL", ":memory:")
-    qdrant_path: str | None = os.getenv("QDRANT_PATH") or None
-    qdrant_api_key: str | None = os.getenv("QDRANT_API_KEY") or None
-    qdrant_collection: str = os.getenv("QDRANT_COLLECTION", "incident_memories")
-    embedding_model: str = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
-    allow_demo_reset: bool = os.getenv("ALLOW_DEMO_RESET", "true").lower() == "true"
-    proof_artifacts_dir: Path = Path(os.getenv("PROOF_ARTIFACTS_DIR", "artifacts/proof"))
+    app_name: str = field(default_factory=lambda: env_str("APP_NAME", "OperaIQ"))
+    app_env: str = field(default_factory=lambda: env_str("APP_ENV", "development"))
+    qdrant_url: str = field(default_factory=lambda: env_str("QDRANT_URL", ":memory:"))
+    qdrant_path: str | None = field(default_factory=lambda: env_optional("QDRANT_PATH"))
+    qdrant_api_key: str | None = field(default_factory=lambda: env_optional("QDRANT_API_KEY"))
+    qdrant_collection: str = field(
+        default_factory=lambda: env_str("QDRANT_COLLECTION", "incident_memories")
+    )
+    embedding_model: str = field(
+        default_factory=lambda: env_str("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
+    )
+    operaiq_api_token: str | None = field(default_factory=lambda: env_optional("OPERAIQ_API_TOKEN"))
+    allow_unauthenticated_writes: bool = field(
+        default_factory=lambda: env_bool(
+            "ALLOW_UNAUTHENTICATED_WRITES",
+            os.getenv("APP_ENV", "development").lower() != "production",
+        )
+    )
+    allow_judge_quick_run: bool = field(default_factory=lambda: env_bool("ALLOW_JUDGE_QUICK_RUN", True))
+    allow_judge_reset: bool = field(default_factory=lambda: env_bool("ALLOW_JUDGE_RESET", False))
+    proof_artifacts_dir: Path = field(
+        default_factory=lambda: Path(env_str("PROOF_ARTIFACTS_DIR", "artifacts/proof"))
+    )
 
     @property
     def qdrant_mode(self) -> str:
@@ -35,9 +65,24 @@ class Settings:
     def production_issues(self) -> list[str]:
         if not self.is_production:
             return []
+        issues: list[str] = []
         if self.qdrant_mode == "memory":
-            return ["production cannot use QDRANT_URL=:memory:"]
-        return []
+            issues.append("production cannot use QDRANT_URL=:memory:")
+        if not self.operaiq_api_token and not self.allow_unauthenticated_writes:
+            issues.append("production write paths require OPERAIQ_API_TOKEN")
+        return issues
+
+    def production_warnings(self) -> list[str]:
+        if not self.is_production:
+            return []
+        warnings: list[str] = []
+        if self.allow_unauthenticated_writes:
+            warnings.append("production allows unauthenticated writes")
+        if self.allow_judge_quick_run:
+            warnings.append("judge quick-run is enabled")
+        if self.allow_judge_reset:
+            warnings.append("judge reset is enabled")
+        return warnings
 
 
 def get_settings() -> Settings:

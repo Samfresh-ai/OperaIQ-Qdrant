@@ -7,9 +7,13 @@ services:
     environment:
       APP_NAME: OperaIQ
       APP_ENV: production
+      PORT: "8097"
       QDRANT_URL: http://qdrant:6333
       QDRANT_COLLECTION: incident_memories
-      ALLOW_DEMO_RESET: "true"
+      OPERAIQ_API_TOKEN: local-compose-token
+      ALLOW_UNAUTHENTICATED_WRITES: "false"
+      ALLOW_JUDGE_QUICK_RUN: "true"
+      ALLOW_JUDGE_RESET: "false"
     ports:
       - "8097:8097"
 

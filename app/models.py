@@ -52,7 +52,7 @@ class VerificationResult(BaseModel):
     verified: bool
 
 
-class DemoResolution(BaseModel):
+class ResolutionResult(BaseModel):
     alert: SplunkAlert
     match: RecallMatch
     recommendation: str
