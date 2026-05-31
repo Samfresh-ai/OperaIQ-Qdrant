@@ -1020,6 +1020,43 @@ wheels = [
 ]
 
 [[package]]
+name = "operaiq"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "fastapi" },
+    { name = "jinja2" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "qdrant-client", extra = ["fastembed"] },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "jinja2", specifier = ">=3.1.4" },
+    { name = "pydantic", specifier = ">=2.8.0" },
+    { name = "python-dotenv", specifier = ">=1.0.1" },
+    { name = "qdrant-client", extras = ["fastembed"], specifier = ">=1.14.2" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.6" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.27.2" },
+    { name = "pytest", specifier = ">=8.3.2" },
+    { name = "ruff", specifier = ">=0.6.8" },
+]
+
+[[package]]
 name = "packaging"
 version = "26.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1508,43 +1545,6 @@ wheels = [
 [package.optional-dependencies]
 fastembed = [
     { name = "fastembed" },
-]
-
-[[package]]
-name = "qdrant-sentinel-memory"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "fastapi" },
-    { name = "jinja2" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "qdrant-client", extra = ["fastembed"] },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "httpx" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "jinja2", specifier = ">=3.1.4" },
-    { name = "pydantic", specifier = ">=2.8.0" },
-    { name = "python-dotenv", specifier = ">=1.0.1" },
-    { name = "qdrant-client", extras = ["fastembed"], specifier = ">=1.14.2" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.6" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "httpx", specifier = ">=0.27.2" },
-    { name = "pytest", specifier = ">=8.3.2" },
-    { name = "ruff", specifier = ">=0.6.8" },
 ]
 
 [[package]]

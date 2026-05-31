@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Sentinel Memory Layer</title>
+    <title>{{ app_name }}</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -11,11 +11,12 @@
       <header class="masthead">
         <div>
           <p class="eyebrow">Qdrant incident memory</p>
-          <h1>Sentinel remembers the last outage before it acts.</h1>
+          <h1>OperaIQ remembers the last outage before an agent acts.</h1>
         </div>
         <div class="collection">
           <span>Collection</span>
           <strong>{{ collection }}</strong>
+          <em>{{ qdrant_mode }}</em>
         </div>
       </header>
 
@@ -57,7 +58,7 @@
             <small id="status">waiting</small>
           </div>
           <div id="narrative" class="narrative">
-            Seed incidents, embed this alert, filter by tenant, and resolve.
+            Seed incidents, embed this alert, filter by tenant, recall the closest fix, and write the new memory back.
           </div>
           <div class="result-grid">
             <div>
@@ -100,4 +101,3 @@
     <script src="/static/app.js"></script>
   </body>
 </html>
-

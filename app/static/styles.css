@@ -78,6 +78,15 @@ h1 {
   font-size: 18px;
 }
 
+.collection em {
+  display: block;
+  margin-top: 6px;
+  color: #ffb84d;
+  font-style: normal;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
 .console {
   display: grid;
   grid-template-columns: minmax(280px, 370px) minmax(360px, 1fr) minmax(240px, 330px);
@@ -255,7 +264,11 @@ p {
 
 @media (max-width: 640px) {
   .shell {
+    width: min(100vw, 390px);
+    max-width: 390px;
+    margin: 0;
     padding: 12px;
+    overflow: hidden;
   }
 
   .narrative {
@@ -264,10 +277,12 @@ p {
   }
 
   h1 {
-    max-width: calc(100vw - 24px);
-    font-size: 28px;
+    width: 100%;
+    max-width: 100%;
+    font-size: 23px;
     line-height: 1.08;
-    overflow-wrap: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
   }
 
   .masthead,
@@ -279,8 +294,9 @@ p {
   }
 
   .panel-title {
+    flex-wrap: wrap;
     gap: 10px;
-    justify-content: flex-start;
+    justify-content: space-between;
     padding: 10px 14px;
   }
 
@@ -296,5 +312,18 @@ p {
   .result-grid > div {
     border-right: 0;
     border-bottom: 1px solid #30403a;
+  }
+
+  input,
+  select,
+  textarea,
+  .collection strong,
+  .result-grid strong,
+  p {
+    overflow-wrap: anywhere;
+  }
+
+  textarea {
+    white-space: pre-wrap;
   }
 }

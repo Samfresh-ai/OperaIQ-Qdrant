@@ -1,8 +1,8 @@
-# Sentinel Memory Layer
+# OperaIQ
 
-Fresh MVP for the Qdrant side quest. This is not the current Sentinel repo.
+Production-shaped Qdrant side quest. This is a separate repo and does not touch the current Sentinel codebase.
 
-The demo shows Qdrant as Sentinel's incident memory layer:
+OperaIQ shows Qdrant as an incident memory layer for ops agents:
 
 1. Seed realistic resolved postmortems.
 2. Store each memory as a Qdrant point: dense vector + payload.
@@ -32,22 +32,25 @@ uv run uvicorn app.main:app --reload --port 8097
 
 Then open `http://127.0.0.1:8097`.
 
-Optional Qdrant server:
+Local server shape:
 
 ```bash
-docker compose up -d qdrant
-QDRANT_URL=http://localhost:6333 uv run python -m app.cli
+docker compose up -d
 ```
 
-Note: `QDRANT_URL=:memory:` is useful for fast local demos, but Qdrant warns that payload indexes do not affect local embedded mode. Use Docker/Qdrant Cloud for true indexed-filter performance proof.
+For Qdrant Cloud, set `QDRANT_URL` and `QDRANT_API_KEY` in the deploy environment.
 
 ## Test
 
 ```bash
 uv run ruff check .
 uv run pytest
+uv run python scripts/operaiq_human_flow.py --base-url http://127.0.0.1:8097
 ```
 
-## Honest build status
+## Production checks
 
-Core MVP is intentionally narrow: one alert, one recall loop, one verification story, and one learning write-back. It is built as a submission-sized Qdrant demo, not a replacement for Splunk and not a fork of Sentinel.
+- `/health` reports app, env, Qdrant mode, collection state, payload indexes, and tenant point count.
+- `/runtime/readiness` fails if production is pointed at in-memory Qdrant or if collection/index checks are missing.
+- `scripts/operaiq_human_flow.py` runs a browser/API-style proof: UI load, seed, health, readiness, Acme recall/write-back, and Globex tenant isolation.
+- The app is not a Splunk replacement and not a Sentinel fork. It is the Qdrant memory layer proof.

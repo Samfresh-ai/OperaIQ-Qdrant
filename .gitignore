@@ -7,4 +7,8 @@ __pycache__/
 qdrant_storage/
 local_qdrant/
 artifacts/
-
+.serena/
+.qdrant-initialized
+.qdrant-bin/
+.qdrant-bin-v*/
+operaiq_qdrant_storage/

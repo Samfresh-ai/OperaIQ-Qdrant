@@ -1,0 +1,10 @@
+.env
+.git
+.serena
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+artifacts
+local_qdrant
+operaiq_qdrant_storage

@@ -61,3 +61,27 @@ class DemoResolution(BaseModel):
     tenantPointCount: int
     narrative: str
 
+
+class QdrantCollectionReport(BaseModel):
+    collection: str
+    mode: str
+    exists: bool
+    tenantPointCount: int | None = None
+    indexedFields: list[str] = Field(default_factory=list)
+    missingIndexes: list[str] = Field(default_factory=list)
+    vectorSize: int | None = None
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ok", "degraded"]
+    app: str
+    env: str
+    qdrant: QdrantCollectionReport
+
+
+class ReadinessResponse(BaseModel):
+    ready: bool
+    production: bool
+    issues: list[str]
+    warnings: list[str]
+    qdrant: QdrantCollectionReport

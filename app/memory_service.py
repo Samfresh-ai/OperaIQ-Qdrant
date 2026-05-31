@@ -7,7 +7,14 @@ from qdrant_client import QdrantClient, models
 
 from app.config import Settings
 from app.embedder import Embedder
-from app.models import DemoResolution, IncidentMemory, RecallMatch, SplunkAlert, VerificationResult
+from app.models import (
+    DemoResolution,
+    IncidentMemory,
+    QdrantCollectionReport,
+    RecallMatch,
+    SplunkAlert,
+    VerificationResult,
+)
 
 
 INDEXED_FIELDS: dict[str, models.PayloadSchemaType] = {
@@ -33,6 +40,8 @@ class IncidentMemoryService:
 
     def _build_client(self, settings: Settings) -> QdrantClient:
         if settings.qdrant_url == ":memory:":
+            if settings.qdrant_path:
+                return QdrantClient(path=settings.qdrant_path)
             return QdrantClient(":memory:")
         return QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
 
@@ -70,6 +79,12 @@ class IncidentMemoryService:
             )
             self.create_payload_indexes()
         else:
+            existing_size = self.vector_size()
+            if existing_size is not None and existing_size != vector_size:
+                raise RuntimeError(
+                    f"collection {self.collection} has vector size {existing_size}, "
+                    f"but embedder produced {vector_size}; reset the collection or use a new name"
+                )
             self.create_payload_indexes()
 
     def create_payload_indexes(self) -> None:
@@ -85,6 +100,9 @@ class IncidentMemoryService:
                     raise
 
     def recall(self, alert: SplunkAlert, limit: int = 3) -> list[RecallMatch]:
+        if not self.client.collection_exists(collection_name=self.collection):
+            raise LookupError(f"Qdrant collection {self.collection} does not exist")
+
         query_vector = self.embedder.embed([alert_to_text(alert)])[0]
         result = self.client.query_points(
             collection_name=self.collection,
@@ -118,7 +136,7 @@ class IncidentMemoryService:
         tenant_point_count = self.count_for_org(alert.orgId)
         narrative = (
             f"Qdrant recalled a {match.similarityPercent}% similar incident, recommended "
-            f"{match.actionTaken}, then Sentinel verified error drop."
+            f"{match.actionTaken}, then OperaIQ verified error drop."
         )
         return DemoResolution(
             alert=alert,
@@ -137,6 +155,35 @@ class IncidentMemoryService:
             exact=True,
         )
         return int(result.count)
+
+    def collection_report(self, org_id: str | None = None) -> QdrantCollectionReport:
+        exists = self.client.collection_exists(collection_name=self.collection)
+        indexed_fields: list[str] = []
+        tenant_point_count: int | None = None
+        vector_size: int | None = None
+
+        if exists:
+            info = self.client.get_collection(collection_name=self.collection)
+            schema = getattr(info, "payload_schema", {}) or {}
+            indexed_fields = sorted(str(field) for field in schema.keys())
+            vector_size = vector_size_from_collection_info(info)
+            if org_id is not None:
+                tenant_point_count = self.count_for_org(org_id)
+
+        missing_indexes = sorted(set(INDEXED_FIELDS) - set(indexed_fields)) if exists else []
+        return QdrantCollectionReport(
+            collection=self.collection,
+            mode=self.settings.qdrant_mode,
+            exists=exists,
+            tenantPointCount=tenant_point_count,
+            indexedFields=indexed_fields,
+            missingIndexes=missing_indexes,
+            vectorSize=vector_size,
+        )
+
+    def vector_size(self) -> int | None:
+        info = self.client.get_collection(collection_name=self.collection)
+        return vector_size_from_collection_info(info)
 
 
 def point_id(memory: IncidentMemory) -> str:
@@ -211,6 +258,16 @@ def match_from_point(point: models.ScoredPoint) -> RecallMatch:
     )
 
 
+def vector_size_from_collection_info(info: models.CollectionInfo) -> int | None:
+    vectors = info.config.params.vectors
+    if isinstance(vectors, models.VectorParams):
+        return int(vectors.size)
+    if isinstance(vectors, dict) and vectors:
+        first = next(iter(vectors.values()))
+        return int(first.size)
+    return None
+
+
 def verify_action(alert: SplunkAlert, action: str) -> VerificationResult:
     after_error_count = max(0, round(alert.errorCount * 0.08))
     return VerificationResult(
@@ -247,4 +304,3 @@ def learned_memory_from_alert(
         resolved=verification.verified,
         createdAt=datetime.now(timezone.utc),
     )
-

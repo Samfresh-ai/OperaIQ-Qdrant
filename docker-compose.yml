@@ -1,10 +1,23 @@
 services:
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - qdrant
+    environment:
+      APP_NAME: OperaIQ
+      APP_ENV: production
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: incident_memories
+      ALLOW_DEMO_RESET: "true"
+    ports:
+      - "8097:8097"
+
   qdrant:
-    image: qdrant/qdrant:v1.15.4
+    image: qdrant/qdrant:v1.18.1
     restart: unless-stopped
     ports:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - ./qdrant_storage:/qdrant/storage
-
+      - ./operaiq_qdrant_storage:/qdrant/storage

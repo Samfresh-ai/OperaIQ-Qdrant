@@ -1,7 +1,7 @@
 [project]
-name = "qdrant-sentinel-memory"
+name = "operaiq"
 version = "0.1.0"
-description = "Fresh Qdrant MVP: Sentinel-style incident memory recall with tenant-filtered vector search."
+description = "OperaIQ: production-shaped incident memory recall with tenant-filtered Qdrant search."
 requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.115.0",

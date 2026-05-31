@@ -14,6 +14,8 @@ def main() -> None:
     result = service.resolve_alert(DEFAULT_ALERT)
 
     print(result.narrative)
+    print(f"app={settings.app_name}")
+    print(f"qdrant_mode={settings.qdrant_mode}")
     print(f"recalled_incident={result.match.incidentId}")
     print(f"similarity={result.match.similarityPercent}%")
     print(f"recommended_action={result.recommendation}")
