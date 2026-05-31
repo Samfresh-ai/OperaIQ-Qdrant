@@ -9,6 +9,21 @@ const learnedEl = document.querySelector("#learned");
 const quickRunButton = document.querySelector("#quick-run");
 const resolveButton = document.querySelector("#resolve-alert");
 const apiTokenInput = document.querySelector("#apiToken");
+const runtimeGateEl = document.querySelector(".runtime-gate");
+const runtimeStateEl = document.querySelector("#runtimeState");
+const runtimeDetailEl = document.querySelector("#runtimeDetail");
+const qdrantModeEl = document.querySelector("#qdrantMode");
+const pointCountEl = document.querySelector("#pointCount");
+const topBrainCountEl = document.querySelector("#topBrainCount");
+const topLastResolvedEl = document.querySelector("#topLastResolved");
+const indexSummaryEl = document.querySelector("#indexSummary");
+const qdrantDotEl = document.querySelector("#qdrantDot");
+const indexDotEl = document.querySelector("#indexDot");
+const writeDotEl = document.querySelector("#writeDot");
+const tenantStateEl = document.querySelector("#tenantState");
+const indexStateEl = document.querySelector("#indexState");
+const writeStateEl = document.querySelector("#writeState");
+const payloadIndexEvidenceEl = document.querySelector("#payloadIndexEvidence");
 
 function alertPayload() {
   return {
@@ -23,20 +38,36 @@ function alertPayload() {
   };
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function renderResult(result) {
   statusEl.textContent = "resolved";
   narrativeEl.textContent = result.narrative;
   similarityEl.textContent = `${result.match.similarityPercent}%`;
-  actionEl.textContent = result.recommendation;
+  actionEl.innerHTML = escapeHtml(result.recommendation).replaceAll("_", "_<wbr>");
   pointsEl.textContent = result.tenantPointCount;
+  pointCountEl.textContent = result.tenantPointCount;
+  topBrainCountEl.textContent = result.tenantPointCount;
+  topLastResolvedEl.textContent = "now";
   incidentEl.textContent = `${result.match.incidentId}: ${result.match.rootCause}`;
   verificationEl.textContent = result.verification.signal;
   learnedEl.textContent = `${result.learnedIncident.incidentId} written back to Qdrant for ${result.learnedIncident.orgId}.`;
+  tenantStateEl.textContent = "passed";
+  writeStateEl.textContent = "written";
+  writeDotEl.className = "status-dot live";
 }
 
 function renderError(error) {
   statusEl.textContent = "error";
   narrativeEl.textContent = error.message || "Request failed.";
+  writeDotEl.className = "status-dot";
 }
 
 function authHeaders() {
@@ -64,6 +95,45 @@ async function postJson(url, body = null) {
 function setBusy(busy) {
   quickRunButton.disabled = busy;
   resolveButton.disabled = busy;
+}
+
+function renderReadiness(readiness) {
+  const qdrant = readiness.qdrant || {};
+  const indexes = qdrant.indexedFields || [];
+  const missingIndexes = qdrant.missingIndexes || [];
+
+  qdrantModeEl.textContent = qdrant.mode || qdrantModeEl.textContent;
+  pointCountEl.textContent = typeof qdrant.tenantPointCount === "number" ? qdrant.tenantPointCount : "--";
+  topBrainCountEl.textContent = typeof qdrant.tenantPointCount === "number" ? qdrant.tenantPointCount : "--";
+  indexSummaryEl.textContent = indexes.length ? `${indexes.length} payload indexes` : "no payload indexes reported";
+  payloadIndexEvidenceEl.textContent = indexes.length ? indexes.join(", ") : "createdAt, orgId, resolved, service, severity";
+
+  runtimeGateEl.classList.remove("blocked", "warn");
+  if (!readiness.ready) {
+    runtimeGateEl.classList.add("blocked");
+  }
+
+  runtimeStateEl.textContent = readiness.ready ? "Production ready" : readiness.issues?.[0] || "Production blocked";
+  runtimeDetailEl.textContent = `${readiness.production ? "Production" : "Non-production"} · ${qdrant.mode || "Qdrant"} · ${(readiness.warnings || [])[0] || "Live recall path"}`;
+
+  qdrantDotEl.className = qdrant.exists === false ? "status-dot" : "status-dot live";
+  indexDotEl.className = missingIndexes.length ? "status-dot warn" : "status-dot live";
+  indexStateEl.textContent = missingIndexes.length ? `missing ${missingIndexes.join(", ")}` : "ready";
+}
+
+async function loadReadiness() {
+  try {
+    const response = await fetch("/runtime/readiness", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`readiness failed with ${response.status}`);
+    }
+    renderReadiness(await response.json());
+  } catch (error) {
+    runtimeGateEl.classList.add("blocked");
+    runtimeStateEl.textContent = error.message || "Readiness check failed";
+    qdrantDotEl.className = "status-dot";
+    indexDotEl.className = "status-dot";
+  }
 }
 
 async function resolveCurrentAlert() {
@@ -97,6 +167,8 @@ async function runJudgeQuickRun() {
 
 quickRunButton.addEventListener("click", runJudgeQuickRun);
 resolveButton.addEventListener("click", resolveCurrentAlert);
+
+loadReadiness();
 
 if (new URLSearchParams(window.location.search).get("autorun") === "1") {
   runJudgeQuickRun();

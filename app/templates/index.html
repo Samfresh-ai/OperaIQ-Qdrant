@@ -7,103 +7,169 @@
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <main class="shell">
-      <header class="masthead">
-        <div>
-          <p class="eyebrow">Qdrant incident memory</p>
-          <h1>OperaIQ remembers the last outage before an agent acts.</h1>
-        </div>
-        <div class="collection">
-          <span>Collection</span>
-          <strong>{{ collection }}</strong>
-          <em>{{ qdrant_mode }}</em>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/">OPERAIQ</a>
+        <div class="top-meta">
+          Memory: <span id="topBrainCount">--</span> points · Last resolved:
+          <span id="topLastResolved">none</span>
         </div>
       </header>
 
-      <section class="console">
-        <aside class="panel intake">
-          <div class="panel-title">
-            <span>Alert intake</span>
-            <div class="actions">
-              <button id="quick-run" type="button">Quick-run</button>
-              <button id="resolve-alert" type="button">Resolve</button>
-            </div>
+      <div class="layout">
+        <aside class="sidebar">
+          <nav class="nav-list" aria-label="OperaIQ sections">
+            <a class="nav-link active" href="#memory">Memory</a>
+            <a class="nav-link" href="#alert">Alert</a>
+            <a class="nav-link" href="#proof">Proof</a>
+            <a class="nav-link" href="/runtime/readiness">Readiness</a>
+          </nav>
+          <div class="status-stack" aria-label="Runtime status">
+            <div class="status-title">Status</div>
+            <div class="status-dot-row"><span id="qdrantDot" class="status-dot live"></span>Qdrant</div>
+            <div class="status-dot-row"><span id="indexDot" class="status-dot live"></span>Index</div>
+            <div class="status-dot-row"><span id="writeDot" class="status-dot live"></span>Writes</div>
           </div>
-          <label>
-            Operator token
-            <input id="apiToken" autocomplete="off" placeholder="Required for locked write paths" />
-          </label>
-          <label>
-            Org
-            <input id="orgId" value="{{ default_alert.orgId }}" />
-          </label>
-          <label>
-            Service
-            <input id="service" value="{{ default_alert.service }}" />
-          </label>
-          <label>
-            Severity
-            <select id="severity">
-              <option value="sev1" selected>sev1</option>
-              <option value="sev2">sev2</option>
-              <option value="sev3">sev3</option>
-            </select>
-          </label>
-          <label>
-            Alert title
-            <input id="title" value="{{ default_alert.title }}" />
-          </label>
-          <label>
-            Raw signal
-            <textarea id="message" rows="9">{{ default_alert.message }}</textarea>
-          </label>
         </aside>
 
-        <section class="panel result">
-          <div class="panel-title">
-            <span>Qdrant recall</span>
-            <small id="status">waiting</small>
-          </div>
-          <div id="narrative" class="narrative">
-            Seed incident memory, embed this alert, filter by tenant, recall the closest fix, and write the new memory back.
-          </div>
-          <div class="result-grid">
+        <main class="main-content">
+          <section class="page-head" id="memory">
             <div>
-              <span class="label">similarity</span>
-              <strong id="similarity">--</strong>
+              <h1>Memory</h1>
+              <p>Qdrant recall, tenant isolation, and resolution write-back.</p>
             </div>
-            <div>
-              <span class="label">action</span>
-              <strong id="action">--</strong>
-            </div>
-            <div>
-              <span class="label">tenant points</span>
-              <strong id="points">--</strong>
-            </div>
-          </div>
-          <div class="evidence">
-            <h2>Recalled incident</h2>
-            <p id="incident">No incident recalled yet.</p>
-            <h2>Verification</h2>
-            <p id="verification">No verification run yet.</p>
-            <h2>Learned memory</h2>
-            <p id="learned">No write-back yet.</p>
-          </div>
-        </section>
+            <div class="poll-label">Mode: <span id="qdrantMode">{{ qdrant_mode }}</span></div>
+          </section>
 
-        <aside class="panel instrumentation">
-          <div class="panel-title">
-            <span>Qdrant features</span>
-          </div>
-          <ul>
-            <li><strong>Point</strong><span>vector + incident payload</span></li>
-            <li><strong>Filter</strong><span>orgId keeps tenant memory isolated</span></li>
-            <li><strong>Index</strong><span>payload indexes created before seed ingest</span></li>
-            <li><strong>Learning</strong><span>resolved alert writes back as a new point</span></li>
-          </ul>
-        </aside>
-      </section>
-    </main>
+          <section class="runtime-gate" aria-label="Runtime gate">
+            <div>
+              <div class="section-label">Runtime gate</div>
+              <div id="runtimeState" class="gate-copy">Checking production readiness</div>
+            </div>
+            <div id="runtimeDetail" class="gate-detail">Production · Qdrant server · Live recall path</div>
+          </section>
+
+          <section class="memory-panel">
+            <div class="panel-caption">OperaIQ memory</div>
+            <div class="memory-summary">
+              <span class="accent-value" id="pointCount">--</span> points ·
+              <span id="collectionName">{{ collection }}</span> ·
+              <span id="indexSummary">checking indexes</span>
+            </div>
+            <div class="segment-bar" aria-hidden="true">
+              <span></span><span></span><span></span><span></span><span></span>
+              <span></span><span></span><span></span><span></span><span></span>
+              <span></span><span></span><span></span><span></span><span></span>
+              <span></span><span></span><span></span><span class="dim"></span><span class="dim"></span>
+            </div>
+          </section>
+
+          <section class="workbench">
+            <aside class="panel intake" id="alert">
+              <div class="panel-title">
+                <span>Alert intake</span>
+                <div class="actions">
+                  <button class="primary-button" id="quick-run" type="button">Quick-run</button>
+                  <button class="secondary-button" id="resolve-alert" type="button">Resolve</button>
+                </div>
+              </div>
+              <label>
+                Operator token
+                <input id="apiToken" autocomplete="off" placeholder="Required for locked write paths" />
+              </label>
+              <label>
+                Org
+                <input id="orgId" value="{{ default_alert.orgId }}" />
+              </label>
+              <label>
+                Service
+                <input id="service" value="{{ default_alert.service }}" />
+              </label>
+              <label>
+                Severity
+                <select id="severity">
+                  <option value="sev1" selected>sev1</option>
+                  <option value="sev2">sev2</option>
+                  <option value="sev3">sev3</option>
+                </select>
+              </label>
+              <label>
+                Alert title
+                <input id="title" value="{{ default_alert.title }}" />
+              </label>
+              <label>
+                Raw signal
+                <textarea id="message" rows="9">{{ default_alert.message }}</textarea>
+              </label>
+            </aside>
+
+            <section class="panel result">
+              <div class="panel-title">
+                <span>Qdrant recall</span>
+                <small id="status">waiting</small>
+              </div>
+              <div id="narrative" class="narrative">
+                Seed incident memory, embed this alert, filter by tenant, recall the closest fix, and write the new memory back.
+              </div>
+              <div class="result-grid">
+                <div>
+                  <span class="label">Similarity</span>
+                  <strong id="similarity">--</strong>
+                </div>
+                <div>
+                  <span class="label">Action</span>
+                  <strong id="action">--</strong>
+                </div>
+                <div>
+                  <span class="label">Tenant points</span>
+                  <strong id="points">--</strong>
+                </div>
+              </div>
+              <div class="evidence">
+                <h2>Recalled incident</h2>
+                <p id="incident">No incident recalled yet.</p>
+                <h2>Verification</h2>
+                <p id="verification">No verification run yet.</p>
+                <h2>Learned memory</h2>
+                <p id="learned">No write-back yet.</p>
+              </div>
+            </section>
+          </section>
+
+          <section class="proof-panel" id="proof">
+            <div class="proof-title">Recall proof</div>
+            <div class="proof-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Check</th>
+                    <th>Evidence</th>
+                    <th class="right">State</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Tenant filter</td>
+                    <td>orgId-scoped vector search before recommendation</td>
+                    <td class="right" id="tenantState">waiting</td>
+                  </tr>
+                  <tr>
+                    <td>Payload indexes</td>
+                    <td id="payloadIndexEvidence">createdAt, orgId, resolved, service, severity</td>
+                    <td class="right" id="indexState">checking</td>
+                  </tr>
+                  <tr>
+                    <td>Write-back</td>
+                    <td id="writeBackEvidence">resolved alert writes back as a new Qdrant point</td>
+                    <td class="right" id="writeState">waiting</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
 
     <script src="/static/app.js"></script>
   </body>

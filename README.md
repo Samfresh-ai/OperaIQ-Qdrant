@@ -120,7 +120,7 @@ The strict proof script checks UI load, seed, health, readiness, Acme recall/wri
 | Tenant-filtered recall | Verified |
 | Payload indexes | Verified in server mode |
 | Learned memory write-back | Verified |
-| Render deployment config | Implemented |
+| Render deployment config | Implemented; default Blueprint uses Render free instance for no-card hosted proof |
 | AWS Qdrant Compose fallback | Implemented |
-| Qdrant Cloud live cluster | Ready for credentials; not committed |
+| Qdrant Cloud live cluster | Ready for credentials; secrets are not committed |
 | Public Render URL | Requires creating the Render service from `render.yaml` |

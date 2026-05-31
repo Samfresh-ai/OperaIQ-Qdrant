@@ -5,6 +5,7 @@ Render should host the OperaIQ app. Qdrant should stay outside the Render web co
 ## Preferred Shape
 
 - `operaiq`: Docker web service from the repo root `Dockerfile`.
+- Instance type: `free` in `render.yaml` for the no-card hosted proof path; upgrade to `starter` or stronger before relying on it for production traffic.
 - Health check path: `/health`.
 - Readiness proof path: `/runtime/readiness`.
 - Vector store: Qdrant Cloud or hosted Qdrant server.
@@ -26,7 +27,7 @@ ALLOW_JUDGE_RESET=false
 PROOF_ARTIFACTS_DIR=artifacts/proof
 ```
 
-`render.yaml` prompts for `QDRANT_URL` and `QDRANT_API_KEY`, generates `OPERAIQ_API_TOKEN`, and sets `/health` as the HTTP health check.
+`render.yaml` prompts for `QDRANT_URL` and `QDRANT_API_KEY`, generates `OPERAIQ_API_TOKEN`, sets `/health` as the HTTP health check, and uses Render's free web instance so the service can be created without adding billing details.
 
 ## Qdrant Cloud Target
 

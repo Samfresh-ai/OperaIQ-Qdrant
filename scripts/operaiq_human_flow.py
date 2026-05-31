@@ -40,8 +40,8 @@ def main() -> None:
         ui = client.get("/")
         record(
             "ui_loads_operaiq_console",
-            ui.status_code == 200 and "OperaIQ remembers" in ui.text,
-            {"status": ui.status_code, "containsOperaIQ": "OperaIQ remembers" in ui.text},
+            ui.status_code == 200 and "Qdrant recall" in ui.text,
+            {"status": ui.status_code, "containsRecallConsole": "Qdrant recall" in ui.text},
         )
 
         seed = client.post("/api/seed", params={"reset": str(args.reset).lower()}, headers=headers)
