@@ -6,7 +6,6 @@ const pointsEl = document.querySelector("#points");
 const incidentEl = document.querySelector("#incident");
 const verificationEl = document.querySelector("#verification");
 const learnedEl = document.querySelector("#learned");
-const quickRunButton = document.querySelector("#quick-run");
 const resolveButton = document.querySelector("#resolve-alert");
 const apiTokenInput = document.querySelector("#apiToken");
 const runtimeGateEl = document.querySelector(".runtime-gate");
@@ -24,6 +23,8 @@ const tenantStateEl = document.querySelector("#tenantState");
 const indexStateEl = document.querySelector("#indexState");
 const writeStateEl = document.querySelector("#writeState");
 const payloadIndexEvidenceEl = document.querySelector("#payloadIndexEvidence");
+let seedPromise = null;
+let memoryPrepared = false;
 
 function alertPayload() {
   return {
@@ -93,7 +94,6 @@ async function postJson(url, body = null) {
 }
 
 function setBusy(busy) {
-  quickRunButton.disabled = busy;
   resolveButton.disabled = busy;
 }
 
@@ -101,6 +101,10 @@ function renderReadiness(readiness) {
   const qdrant = readiness.qdrant || {};
   const indexes = qdrant.indexedFields || [];
   const missingIndexes = qdrant.missingIndexes || [];
+  const warning = (readiness.warnings || [])[0] || "Live recall path";
+  const warningSummary = warning.includes("local Qdrant mode")
+    ? "local mode: index proof unavailable"
+    : warning;
 
   qdrantModeEl.textContent = qdrant.mode || qdrantModeEl.textContent;
   pointCountEl.textContent = typeof qdrant.tenantPointCount === "number" ? qdrant.tenantPointCount : "--";
@@ -114,7 +118,7 @@ function renderReadiness(readiness) {
   }
 
   runtimeStateEl.textContent = readiness.ready ? "Production ready" : readiness.issues?.[0] || "Production blocked";
-  runtimeDetailEl.textContent = `${readiness.production ? "Production" : "Non-production"} · ${qdrant.mode || "Qdrant"} · ${(readiness.warnings || [])[0] || "Live recall path"}`;
+  runtimeDetailEl.textContent = `${readiness.production ? "Production" : "Non-production"} · ${qdrant.mode || "Qdrant"} · ${warningSummary}`;
 
   qdrantDotEl.className = qdrant.exists === false ? "status-dot" : "status-dot live";
   indexDotEl.className = missingIndexes.length ? "status-dot warn" : "status-dot live";
@@ -127,13 +131,55 @@ async function loadReadiness() {
     if (!response.ok) {
       throw new Error(`readiness failed with ${response.status}`);
     }
-    renderReadiness(await response.json());
+    const readiness = await response.json();
+    renderReadiness(readiness);
+    return readiness;
   } catch (error) {
     runtimeGateEl.classList.add("blocked");
     runtimeStateEl.textContent = error.message || "Readiness check failed";
     qdrantDotEl.className = "status-dot";
     indexDotEl.className = "status-dot";
+    return null;
   }
+}
+
+async function seedMemoryOnce() {
+  if (!seedPromise) {
+    statusEl.textContent = "preparing";
+    narrativeEl.textContent =
+      "Preparing baseline incident memory once. Resolve actions will not reset the collection.";
+    seedPromise = postJson("/api/seed?reset=false")
+      .then((seedResult) => {
+        memoryPrepared = true;
+        pointCountEl.textContent = seedResult.tenantPointCount;
+        topBrainCountEl.textContent = seedResult.tenantPointCount;
+        pointsEl.textContent = seedResult.tenantPointCount;
+        statusEl.textContent = "waiting";
+        narrativeEl.textContent =
+          "App logs enter Qdrant, the watcher finds a pattern, OperaIQ acts, and the learned incident writes back.";
+        return seedResult;
+      })
+      .catch((error) => {
+        seedPromise = null;
+        statusEl.textContent = "locked";
+        narrativeEl.textContent =
+          "Memory is not prepared yet. Use the local CLI or provide a production token before writing.";
+        throw error;
+      });
+  }
+  return seedPromise;
+}
+
+async function prepareMemoryFromReadiness() {
+  const readiness = await loadReadiness();
+  const qdrant = readiness?.qdrant || {};
+  if (qdrant.exists === false || qdrant.tenantPointCount === 0 || qdrant.tenantPointCount === null) {
+    await postJson("/api/seed?reset=false");
+    memoryPrepared = true;
+    await loadReadiness();
+    return;
+  }
+  memoryPrepared = true;
 }
 
 async function resolveCurrentAlert() {
@@ -142,7 +188,9 @@ async function resolveCurrentAlert() {
   narrativeEl.textContent = "Embedding alert and querying Qdrant with orgId filter...";
 
   try {
-    await postJson("/api/seed?reset=false");
+    if (!memoryPrepared) {
+      await seedMemoryOnce();
+    }
     renderResult(await postJson("/api/alerts/resolve", alertPayload()));
   } catch (error) {
     renderError(error);
@@ -151,25 +199,6 @@ async function resolveCurrentAlert() {
   }
 }
 
-async function runJudgeQuickRun() {
-  setBusy(true);
-  statusEl.textContent = "quick-run";
-  narrativeEl.textContent = "Running the optional judge quick-run against seeded incident memory...";
-
-  try {
-    renderResult(await postJson("/api/judge/quick-run?reset=false"));
-  } catch (error) {
-    renderError(error);
-  } finally {
-    setBusy(false);
-  }
-}
-
-quickRunButton.addEventListener("click", runJudgeQuickRun);
 resolveButton.addEventListener("click", resolveCurrentAlert);
 
-loadReadiness();
-
-if (new URLSearchParams(window.location.search).get("autorun") === "1") {
-  runJudgeQuickRun();
-}
+prepareMemoryFromReadiness().catch(renderError);

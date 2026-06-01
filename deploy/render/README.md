@@ -1,15 +1,15 @@
 # OperaIQ Render Deployment
 
-Render should host the OperaIQ app. Qdrant should stay outside the Render web container: use Qdrant Cloud first, or another hosted Qdrant server with TLS and an API key.
+Render hosts the OperaIQ app. Qdrant should live outside the Render web container: use Qdrant Cloud first, or another hosted Qdrant server with TLS and an API key.
 
 ## Preferred Shape
 
 - `operaiq`: Docker web service from the repo root `Dockerfile`.
-- Instance type: `free` in `render.yaml` for the no-card hosted proof path; upgrade to `starter` or stronger before relying on it for production traffic.
+- Instance type: `free` in `render.yaml` for the no-card hosted path; upgrade before relying on it for production traffic.
 - Health check path: `/health`.
-- Readiness proof path: `/runtime/readiness`.
+- Readiness path: `/runtime/readiness`.
 - Vector store: Qdrant Cloud or hosted Qdrant server.
-- Optional judge fallback: `/api/judge/quick-run`.
+- Write protection: `OPERAIQ_API_TOKEN` on every production write path.
 
 ## Required Variables
 
@@ -22,8 +22,7 @@ QDRANT_COLLECTION=incident_memories
 EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
 OPERAIQ_API_TOKEN=<generated secret>
 ALLOW_UNAUTHENTICATED_WRITES=false
-ALLOW_JUDGE_QUICK_RUN=true
-ALLOW_JUDGE_RESET=false
+ALLOW_COLLECTION_RESET=false
 PROOF_ARTIFACTS_DIR=artifacts/proof
 ```
 
@@ -46,7 +45,7 @@ Do not use a Qdrant Cloud management key as the app's database key. The app need
 2. In Render, create a new Blueprint from this repo.
 3. Fill `QDRANT_URL` and `QDRANT_API_KEY` when prompted.
 4. Wait for the Docker deploy to pass `/health`.
-5. Open `/runtime/readiness`; production must be `true` and `ready` must be `true`.
+5. Open `/runtime/readiness`; production must be `true` and ready must be `true`.
 
 ## Proof
 
@@ -57,10 +56,10 @@ OPERAIQ_API_TOKEN=<secret> \
 uv run python scripts/operaiq_human_flow.py --base-url https://<operaiq-render-url>
 ```
 
-Required proof:
+Required flow:
 
 ```text
-UI loads -> Qdrant collection exists -> payload indexes present -> Acme alert resolves -> learned memory writes back -> Globex tenant recall stays isolated
+UI loads -> seed without reset -> app logs stored in Qdrant -> watcher fires webhook -> OperaIQ resolves -> learned memory writes back -> Globex tenant recall stays isolated
 ```
 
 ## Monitoring
@@ -72,4 +71,4 @@ GET https://<operaiq-render-url>/health
 GET https://<operaiq-render-url>/runtime/readiness
 ```
 
-`/health` is the Render deploy health check. `/runtime/readiness` is the product truth check; do not treat a deploy as submission-ready until it is ready.
+`/health` is the Render deploy health check. `/runtime/readiness` is the product truth check; do not treat a deploy as ready until it passes.

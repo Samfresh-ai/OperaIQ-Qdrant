@@ -8,6 +8,7 @@ from qdrant_client import QdrantClient, models
 from app.config import Settings
 from app.embedder import Embedder
 from app.models import (
+    AppLogEvent,
     IncidentMemory,
     QdrantCollectionReport,
     RecallMatch,
@@ -23,6 +24,8 @@ INDEXED_FIELDS: dict[str, models.PayloadSchemaType] = {
     "severity": models.PayloadSchemaType.KEYWORD,
     "resolved": models.PayloadSchemaType.BOOL,
     "createdAt": models.PayloadSchemaType.DATETIME,
+    "kind": models.PayloadSchemaType.KEYWORD,
+    "project": models.PayloadSchemaType.KEYWORD,
 }
 
 
@@ -62,6 +65,50 @@ class IncidentMemoryService:
             for memory, vector in zip(memories, vectors, strict=True)
         ]
         self.client.upsert(collection_name=self.collection, points=points)
+
+    def ingest_app_logs(self, events: list[AppLogEvent]) -> list[str]:
+        if not events:
+            raise ValueError("at least one app log event is required")
+
+        vectors = self.embedder.embed([log_event_to_text(event) for event in events])
+        vector_size = len(vectors[0])
+        self.ensure_collection(vector_size=vector_size, reset=False)
+
+        points = [
+            models.PointStruct(
+                id=log_point_id(event),
+                vector=vector,
+                payload=log_event_payload(event),
+            )
+            for event, vector in zip(events, vectors, strict=True)
+        ]
+        self.client.upsert(collection_name=self.collection, points=points)
+        return [event.eventId for event in events]
+
+    def watch_app_log_patterns(
+        self,
+        org_id: str,
+        *,
+        project: str | None = None,
+        limit: int = 10,
+    ) -> tuple[dict[str, object], SplunkAlert, ResolutionResult]:
+        if not self.client.collection_exists(collection_name=self.collection):
+            raise LookupError(f"Qdrant collection {self.collection} does not exist")
+
+        points, _ = self.client.scroll(
+            collection_name=self.collection,
+            scroll_filter=unresolved_log_filter(org_id, project),
+            with_payload=True,
+            limit=limit,
+        )
+        payloads = [point.payload or {} for point in points if (point.payload or {}).get("kind")]
+        if not payloads:
+            suffix = f" project={project}" if project else ""
+            raise LookupError(f"No unresolved app log pattern found for orgId={org_id}{suffix}")
+
+        payload = max(payloads, key=lambda item: str(item.get("createdAt", "")))
+        alert = alert_from_log_payload(payload)
+        return payload, alert, self.resolve_alert(alert)
 
     def ensure_collection(self, vector_size: int, reset: bool = False) -> None:
         exists = self.client.collection_exists(collection_name=self.collection)
@@ -190,6 +237,10 @@ def point_id(memory: IncidentMemory) -> str:
     return str(uuid5(NAMESPACE_URL, f"{memory.orgId}:{memory.incidentId}"))
 
 
+def log_point_id(event: AppLogEvent) -> str:
+    return str(uuid5(NAMESPACE_URL, f"{event.orgId}:app-log:{event.eventId}"))
+
+
 def memory_to_text(memory: IncidentMemory) -> str:
     return " ".join(
         [
@@ -201,6 +252,44 @@ def memory_to_text(memory: IncidentMemory) -> str:
             f"action: {memory.actionTaken}",
         ]
     )
+
+
+def log_event_to_text(event: AppLogEvent) -> str:
+    return " ".join(
+        [
+            f"project: {event.project}",
+            f"service: {event.service}",
+            f"severity: {event.severity}",
+            f"message: {event.message}",
+            f"error count: {event.errorCount}",
+            f"p95 latency: {event.p95LatencyMs}ms",
+        ]
+    )
+
+
+def log_event_payload(event: AppLogEvent) -> dict[str, object]:
+    return {
+        "kind": "app-log",
+        "orgId": event.orgId,
+        "project": event.project,
+        "eventId": event.eventId,
+        "incidentId": f"app-log-{event.eventId}",
+        "service": event.service,
+        "severity": event.severity,
+        "symptoms": [
+            event.message,
+            f"errorCount={event.errorCount}",
+            f"p95LatencyMs={event.p95LatencyMs}",
+        ],
+        "rootCause": "Unresolved app log pattern waiting for OperaIQ.",
+        "resolution": "Waiting for pattern detection and webhook resolution.",
+        "actionTaken": "pending_pattern_watch",
+        "resolved": False,
+        "createdAt": event.observedAt.isoformat(),
+        "message": event.message,
+        "errorCount": event.errorCount,
+        "p95LatencyMs": event.p95LatencyMs,
+    }
 
 
 def alert_to_text(alert: SplunkAlert) -> str:
@@ -216,6 +305,22 @@ def alert_to_text(alert: SplunkAlert) -> str:
     )
 
 
+def alert_from_log_payload(payload: dict[str, object]) -> SplunkAlert:
+    service = str(payload["service"])
+    severity = payload["severity"]
+    return SplunkAlert(
+        orgId=str(payload["orgId"]),
+        alertId=f"qdrant-watch-{payload['eventId']}",
+        service=service,
+        severity=severity,
+        title=f"{service} failure pattern from app logs",
+        message=str(payload["message"]),
+        observedAt=payload["createdAt"],
+        errorCount=int(payload.get("errorCount") or 0),
+        p95LatencyMs=int(payload.get("p95LatencyMs") or 0),
+    )
+
+
 def org_filter(org_id: str) -> models.Filter:
     return models.Filter(
         must=[
@@ -225,6 +330,31 @@ def org_filter(org_id: str) -> models.Filter:
             )
         ]
     )
+
+
+def unresolved_log_filter(org_id: str, project: str | None = None) -> models.Filter:
+    must = [
+        models.FieldCondition(
+            key="orgId",
+            match=models.MatchValue(value=org_id),
+        ),
+        models.FieldCondition(
+            key="resolved",
+            match=models.MatchValue(value=False),
+        ),
+        models.FieldCondition(
+            key="kind",
+            match=models.MatchValue(value="app-log"),
+        ),
+    ]
+    if project:
+        must.append(
+            models.FieldCondition(
+                key="project",
+                match=models.MatchValue(value=project),
+            )
+        )
+    return models.Filter(must=must)
 
 
 def org_resolved_filter(org_id: str) -> models.Filter:

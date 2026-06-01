@@ -25,9 +25,7 @@ services:
         generateValue: true
       - key: ALLOW_UNAUTHENTICATED_WRITES
         value: "false"
-      - key: ALLOW_JUDGE_QUICK_RUN
-        value: "true"
-      - key: ALLOW_JUDGE_RESET
+      - key: ALLOW_COLLECTION_RESET
         value: "false"
       - key: PROOF_ARTIFACTS_DIR
         value: artifacts/proof

@@ -12,8 +12,7 @@ services:
       QDRANT_COLLECTION: incident_memories
       OPERAIQ_API_TOKEN: local-compose-token
       ALLOW_UNAUTHENTICATED_WRITES: "false"
-      ALLOW_JUDGE_QUICK_RUN: "true"
-      ALLOW_JUDGE_RESET: "false"
+      ALLOW_COLLECTION_RESET: "false"
     ports:
       - "8097:8097"
 

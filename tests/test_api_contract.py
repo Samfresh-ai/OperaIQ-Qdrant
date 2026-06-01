@@ -4,6 +4,7 @@ from app.config import Settings
 from app.embedder import KeywordEmbedder
 import app.main as main
 from app.memory_service import IncidentMemoryService
+from app.models import AppLogEvent
 from app.seed import DEFAULT_ALERT
 
 
@@ -30,6 +31,8 @@ def test_api_health_readiness_resolve_and_tenant_isolation(monkeypatch) -> None:
         "severity",
         "resolved",
         "createdAt",
+        "kind",
+        "project",
     }
 
     readiness_response = client.get("/runtime/readiness")
@@ -67,6 +70,76 @@ def test_api_health_readiness_resolve_and_tenant_isolation(monkeypatch) -> None:
     assert globex["learnedIncident"]["orgId"] == "globex-payments"
 
 
+def test_app_log_watch_flow_fires_webhook_and_writes_learned_memory(monkeypatch) -> None:
+    service = IncidentMemoryService(
+        settings=Settings(qdrant_url=":memory:"),
+        embedder=KeywordEmbedder(),
+    )
+
+    monkeypatch.setattr(main, "get_memory_service", lambda: service)
+    client = TestClient(main.app)
+
+    seed_response = client.post("/api/seed?reset=false")
+    assert seed_response.status_code == 200
+    assert seed_response.json()["tenantPointCount"] == 8
+
+    event = AppLogEvent(
+        orgId=DEFAULT_ALERT.orgId,
+        project="new-checkout-project",
+        eventId="unit-log-redis",
+        service=DEFAULT_ALERT.service,
+        severity=DEFAULT_ALERT.severity,
+        message=DEFAULT_ALERT.message,
+        errorCount=DEFAULT_ALERT.errorCount,
+        p95LatencyMs=DEFAULT_ALERT.p95LatencyMs,
+    )
+    ingest = client.post("/api/app/logs", json={"events": [event.model_dump(mode="json")]})
+    assert ingest.status_code == 200
+    assert ingest.json()["tenantPointCount"] == 9
+
+    watch = client.post(
+        "/api/qdrant/watch",
+        json={"orgId": DEFAULT_ALERT.orgId, "project": "new-checkout-project"},
+    )
+    assert watch.status_code == 200
+    result = watch.json()
+    assert result["webhookFired"] is True
+    assert result["webhookPath"] == "/api/webhooks/pattern-alert"
+    assert result["resolution"]["match"]["incidentId"] == "inc-redis-econnreset-2026-05-21"
+    assert result["resolution"]["recommendation"] == "rotate_connection_pool"
+    assert result["resolution"]["tenantPointCount"] == 10
+
+
+def test_seed_without_reset_preserves_custom_org_data(monkeypatch) -> None:
+    service = IncidentMemoryService(
+        settings=Settings(qdrant_url=":memory:"),
+        embedder=KeywordEmbedder(),
+    )
+
+    monkeypatch.setattr(main, "get_memory_service", lambda: service)
+    client = TestClient(main.app)
+
+    assert client.post("/api/seed?reset=false").status_code == 200
+    custom_event = AppLogEvent(
+        orgId="custom-org",
+        project="custom-project",
+        service=DEFAULT_ALERT.service,
+        severity=DEFAULT_ALERT.severity,
+        message=DEFAULT_ALERT.message,
+        errorCount=DEFAULT_ALERT.errorCount,
+        p95LatencyMs=DEFAULT_ALERT.p95LatencyMs,
+    )
+    assert client.post(
+        "/api/app/logs",
+        json={"events": [custom_event.model_dump(mode="json")]},
+    ).status_code == 200
+
+    reseed = client.post("/api/seed?reset=false")
+
+    assert reseed.status_code == 200
+    assert service.count_for_org("custom-org") == 1
+
+
 def test_resolve_without_seed_returns_clear_404(monkeypatch) -> None:
     service = IncidentMemoryService(
         settings=Settings(qdrant_url=":memory:"),
@@ -89,7 +162,6 @@ def test_production_write_paths_require_token(monkeypatch) -> None:
             qdrant_url=":memory:",
             operaiq_api_token="secret-token",
             allow_unauthenticated_writes=False,
-            allow_judge_quick_run=False,
         ),
         embedder=KeywordEmbedder(),
     )
@@ -108,21 +180,17 @@ def test_production_write_paths_require_token(monkeypatch) -> None:
     assert allowed.status_code == 200
 
 
-def test_judge_quick_run_can_be_enabled_without_general_writes(monkeypatch) -> None:
+def test_collection_reset_stays_disabled_by_default(monkeypatch) -> None:
     service = IncidentMemoryService(
         settings=Settings(
-            app_env="production",
             qdrant_url=":memory:",
-            allow_unauthenticated_writes=False,
-            allow_judge_quick_run=True,
         ),
         embedder=KeywordEmbedder(),
     )
 
-    monkeypatch.setattr(main, "get_settings", lambda: service.settings)
     monkeypatch.setattr(main, "get_memory_service", lambda: service)
     client = TestClient(main.app)
 
-    response = client.post("/api/judge/quick-run?reset=false")
-    assert response.status_code == 200
-    assert response.json()["recommendation"] == "rotate_connection_pool"
+    response = client.post("/api/seed?reset=true")
+    assert response.status_code == 403
+    assert response.json()["detail"] == "collection reset is disabled"

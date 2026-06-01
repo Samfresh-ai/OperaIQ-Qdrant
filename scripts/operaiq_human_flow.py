@@ -12,6 +12,7 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.config import get_settings
+from app.models import AppLogEvent, PatternWatchRequest
 from app.seed import DEFAULT_ALERT
 
 
@@ -21,6 +22,7 @@ def main() -> None:
     parser.add_argument("--artifact-dir", default=None)
     parser.add_argument("--api-token", default=os.getenv("OPERAIQ_API_TOKEN"))
     parser.add_argument("--reset", action="store_true")
+    parser.add_argument("--project", default=None)
     args = parser.parse_args()
 
     settings = get_settings()
@@ -28,6 +30,7 @@ def main() -> None:
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     generated_at = datetime.now(timezone.utc)
+    project = args.project or f"fresh-project-{generated_at.strftime('%Y%m%d%H%M%S')}"
     checks: list[dict[str, object]] = []
     headers = {"Authorization": f"Bearer {args.api_token}"} if args.api_token else {}
 
@@ -40,8 +43,8 @@ def main() -> None:
         ui = client.get("/")
         record(
             "ui_loads_operaiq_console",
-            ui.status_code == 200 and "Qdrant recall" in ui.text,
-            {"status": ui.status_code, "containsRecallConsole": "Qdrant recall" in ui.text},
+            ui.status_code == 200 and "watcher finds a pattern" in ui.text,
+            {"status": ui.status_code, "containsWatcherCopy": "watcher finds a pattern" in ui.text},
         )
 
         seed = client.post("/api/seed", params={"reset": str(args.reset).lower()}, headers=headers)
@@ -69,23 +72,49 @@ def main() -> None:
             readiness_json,
         )
 
-        acme_alert = DEFAULT_ALERT.model_copy(
-            update={"alertId": f"human-acme-{generated_at.strftime('%Y%m%d%H%M%S')}"}
+        app_log = AppLogEvent(
+            orgId=DEFAULT_ALERT.orgId,
+            project=project,
+            eventId=f"app-log-{generated_at.strftime('%Y%m%d%H%M%S')}",
+            service=DEFAULT_ALERT.service,
+            severity=DEFAULT_ALERT.severity,
+            message=DEFAULT_ALERT.message,
+            observedAt=generated_at,
+            errorCount=DEFAULT_ALERT.errorCount,
+            p95LatencyMs=DEFAULT_ALERT.p95LatencyMs,
         )
-        acme = client.post(
-            "/api/alerts/resolve",
-            json=acme_alert.model_dump(mode="json"),
+        log = client.post(
+            "/api/app/logs",
+            json={"events": [app_log.model_dump(mode="json")]},
             headers=headers,
         )
-        acme_json = acme.json()
+        log_json = log.json()
         record(
-            "acme_alert_recalled_verified_and_learned",
-            acme.status_code == 200
+            "app_logs_written_to_qdrant",
+            log.status_code == 200
+            and log_json.get("stored") == 1
+            and log_json.get("tenantPointCount") == acme_count_before + 1,
+            log_json,
+        )
+
+        watch_request = PatternWatchRequest(orgId=DEFAULT_ALERT.orgId, project=project)
+        watch = client.post(
+            "/api/qdrant/watch",
+            json=watch_request.model_dump(mode="json"),
+            headers=headers,
+        )
+        watch_json = watch.json()
+        acme_json = watch_json.get("resolution", {})
+        record(
+            "qdrant_watch_fired_webhook_and_operaiq_learned",
+            watch.status_code == 200
+            and watch_json.get("webhookFired") is True
+            and watch_json.get("webhookPath") == "/api/webhooks/pattern-alert"
             and acme_json["match"]["incidentId"] == "inc-redis-econnreset-2026-05-21"
             and acme_json["recommendation"] == "rotate_connection_pool"
             and acme_json["verification"]["verified"] is True
-            and acme_json["tenantPointCount"] == acme_count_before + 1,
-            acme_json,
+            and acme_json["tenantPointCount"] == acme_count_before + 2,
+            watch_json,
         )
 
         globex_alert = DEFAULT_ALERT.model_copy(
@@ -114,11 +143,15 @@ def main() -> None:
     artifact = {
         "app": "OperaIQ",
         "baseUrl": args.base_url,
+        "project": project,
         "generatedAt": generated_at.isoformat(),
         "accepted": all(check["passed"] for check in checks),
         "checks": checks,
         "finalHealth": final_health,
         "proofSummary": {
+            "flow": "app logs -> Qdrant unresolved signal -> watcher webhook -> OperaIQ resolve -> Qdrant learned memory",
+            "loggedEvent": log_json["eventIds"][0],
+            "webhookPath": watch_json["webhookPath"],
             "acmeMatch": acme_json["match"]["incidentId"],
             "acmeAction": acme_json["recommendation"],
             "acmeSimilarityPercent": acme_json["match"]["similarityPercent"],
@@ -133,6 +166,9 @@ def main() -> None:
 
     print(f"accepted={artifact['accepted']}")
     print(f"artifact={artifact_path}")
+    print(f"project={project}")
+    print(f"flow={artifact['proofSummary']['flow']}")
+    print(f"webhook_path={artifact['proofSummary']['webhookPath']}")
     print(f"acme_match={artifact['proofSummary']['acmeMatch']}")
     print(f"acme_action={artifact['proofSummary']['acmeAction']}")
     print(f"acme_similarity={artifact['proofSummary']['acmeSimilarityPercent']}%")

@@ -251,9 +251,14 @@ h1 {
 }
 
 .gate-detail {
+  min-width: 0;
   color: var(--text-secondary);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
   text-align: right;
   text-transform: uppercase;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .memory-panel,
@@ -567,6 +572,8 @@ td {
   }
 
   .gate-detail {
+    width: 100%;
+    max-width: 100%;
     text-align: left;
   }
 }

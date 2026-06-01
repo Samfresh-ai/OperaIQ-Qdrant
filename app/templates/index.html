@@ -20,8 +20,6 @@
         <aside class="sidebar">
           <nav class="nav-list" aria-label="OperaIQ sections">
             <a class="nav-link active" href="#memory">Memory</a>
-            <a class="nav-link" href="#alert">Alert</a>
-            <a class="nav-link" href="#proof">Proof</a>
             <a class="nav-link" href="/runtime/readiness">Readiness</a>
           </nav>
           <div class="status-stack" aria-label="Runtime status">
@@ -69,13 +67,12 @@
               <div class="panel-title">
                 <span>Alert intake</span>
                 <div class="actions">
-                  <button class="primary-button" id="quick-run" type="button">Quick-run</button>
-                  <button class="secondary-button" id="resolve-alert" type="button">Resolve</button>
+                  <button class="primary-button" id="resolve-alert" type="button">Resolve</button>
                 </div>
               </div>
               <label>
                 Operator token
-                <input id="apiToken" autocomplete="off" placeholder="Required for locked write paths" />
+                <input id="apiToken" autocomplete="off" placeholder="Only needed when production writes are locked" />
               </label>
               <label>
                 Org
@@ -109,7 +106,7 @@
                 <small id="status">waiting</small>
               </div>
               <div id="narrative" class="narrative">
-                Seed incident memory, embed this alert, filter by tenant, recall the closest fix, and write the new memory back.
+                App logs enter Qdrant, the watcher finds a pattern, OperaIQ acts, and the learned incident writes back.
               </div>
               <div class="result-grid">
                 <div>
@@ -159,8 +156,8 @@
                     <td class="right" id="indexState">checking</td>
                   </tr>
                   <tr>
-                    <td>Write-back</td>
-                    <td id="writeBackEvidence">resolved alert writes back as a new Qdrant point</td>
+                    <td>Learning loop</td>
+                    <td id="writeBackEvidence">resolved incident writes back as a new Qdrant point</td>
                     <td class="right" id="writeState">waiting</td>
                   </tr>
                 </tbody>

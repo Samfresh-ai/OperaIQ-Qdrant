@@ -9,7 +9,16 @@ from fastapi.templating import Jinja2Templates
 from app.config import get_settings
 from app.embedder import FastEmbedEmbedder
 from app.memory_service import IncidentMemoryService
-from app.models import HealthResponse, ReadinessResponse, ResolutionResult, SplunkAlert
+from app.models import (
+    HealthResponse,
+    LogIngestRequest,
+    LogIngestResponse,
+    PatternWatchRequest,
+    PatternWatchResult,
+    ReadinessResponse,
+    ResolutionResult,
+    SplunkAlert,
+)
 from app.seed import DEFAULT_ALERT, SEED_INCIDENTS
 
 
@@ -27,11 +36,9 @@ def get_memory_service() -> IncidentMemoryService:
     )
 
 
-def require_write_access(authorization: str | None, *, allow_judge: bool = False) -> None:
+def require_write_access(authorization: str | None) -> None:
     settings = get_settings()
     if settings.allow_unauthenticated_writes:
-        return
-    if allow_judge and settings.allow_judge_quick_run:
         return
     if not settings.operaiq_api_token:
         raise HTTPException(status_code=503, detail="write token is not configured")
@@ -97,7 +104,7 @@ def seed(
     authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, object]:
     require_write_access(authorization)
-    if reset and not get_settings().allow_judge_reset:
+    if reset and not get_settings().allow_collection_reset:
         raise HTTPException(status_code=403, detail="collection reset is disabled")
 
     service = get_memory_service()
@@ -112,19 +119,65 @@ def seed(
     }
 
 
-@app.post("/api/judge/quick-run", response_model=ResolutionResult)
-def judge_quick_run(
-    reset: bool = False,
+@app.post("/api/app/logs", response_model=LogIngestResponse)
+def ingest_app_logs(
+    request: LogIngestRequest,
     authorization: Annotated[str | None, Header()] = None,
-) -> ResolutionResult:
-    require_write_access(authorization, allow_judge=True)
-    if reset and not get_settings().allow_judge_reset:
-        raise HTTPException(status_code=403, detail="collection reset is disabled")
-
+) -> LogIngestResponse:
+    require_write_access(authorization)
     service = get_memory_service()
     try:
-        service.seed(SEED_INCIDENTS, reset=reset)
-        return service.resolve_alert(DEFAULT_ALERT)
+        event_ids = service.ingest_app_logs(request.events)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    first_event = request.events[0]
+    return LogIngestResponse(
+        stored=len(event_ids),
+        orgId=first_event.orgId,
+        project=first_event.project,
+        eventIds=event_ids,
+        tenantPointCount=service.count_for_org(first_event.orgId),
+    )
+
+
+@app.post("/api/qdrant/watch", response_model=PatternWatchResult)
+def watch_qdrant_patterns(
+    request: PatternWatchRequest,
+    authorization: Annotated[str | None, Header()] = None,
+) -> PatternWatchResult:
+    require_write_access(authorization)
+    service = get_memory_service()
+    try:
+        payload, alert, resolution = service.watch_app_log_patterns(
+            request.orgId,
+            project=request.project,
+            limit=request.limit,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return PatternWatchResult(
+        sourceEventId=str(payload["eventId"]),
+        sourceProject=str(payload["project"]),
+        pattern=f"{alert.service} {alert.severity} app-log pattern",
+        webhookPath="/api/webhooks/pattern-alert",
+        webhookFired=True,
+        alert=alert,
+        resolution=resolution,
+    )
+
+
+@app.post("/api/webhooks/pattern-alert", response_model=ResolutionResult)
+def pattern_alert_webhook(
+    alert: SplunkAlert,
+    authorization: Annotated[str | None, Header()] = None,
+) -> ResolutionResult:
+    require_write_access(authorization)
+    service = get_memory_service()
+    try:
+        return service.resolve_alert(alert)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (RuntimeError, ValueError) as exc:

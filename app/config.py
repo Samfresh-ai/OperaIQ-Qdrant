@@ -44,8 +44,9 @@ class Settings:
             os.getenv("APP_ENV", "development").lower() != "production",
         )
     )
-    allow_judge_quick_run: bool = field(default_factory=lambda: env_bool("ALLOW_JUDGE_QUICK_RUN", True))
-    allow_judge_reset: bool = field(default_factory=lambda: env_bool("ALLOW_JUDGE_RESET", False))
+    allow_collection_reset: bool = field(
+        default_factory=lambda: env_bool("ALLOW_COLLECTION_RESET", False)
+    )
     proof_artifacts_dir: Path = field(
         default_factory=lambda: Path(env_str("PROOF_ARTIFACTS_DIR", "artifacts/proof"))
     )
@@ -78,10 +79,8 @@ class Settings:
         warnings: list[str] = []
         if self.allow_unauthenticated_writes:
             warnings.append("production allows unauthenticated writes")
-        if self.allow_judge_quick_run:
-            warnings.append("judge quick-run is enabled")
-        if self.allow_judge_reset:
-            warnings.append("judge reset is enabled")
+        if self.allow_collection_reset:
+            warnings.append("collection reset is enabled")
         return warnings
 
 
