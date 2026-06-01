@@ -37,6 +37,12 @@ const incidentTimeEl = document.querySelector("#incidentTime");
 const serviceCellEl = document.querySelector("#serviceCell");
 const agentModeEl = document.querySelector("#agentMode");
 const severityChipEl = document.querySelector("#severityChip");
+const adminLockStateEl = document.querySelector("#adminLockState");
+const sourceSignalEl = document.querySelector("#sourceSignal");
+const traceHeadlineEl = document.querySelector("#traceHeadline");
+const traceConfidenceEl = document.querySelector("#traceConfidence");
+const traceDecisionEl = document.querySelector("#traceDecision");
+const tracePointsEl = document.querySelector("#tracePoints");
 let memoryPrepared = false;
 let activeWebhookIntegration = null;
 const expectedPayloadIndexes = "createdAt, kind, orgId, project, resolved, service, severity";
@@ -77,6 +83,31 @@ function setIncidentState(state) {
   incidentTimeEl.textContent = "now";
 }
 
+function renderAdminAccessState() {
+  const unlocked = hasOperatorToken();
+  adminLockStateEl.textContent = unlocked ? "unlocked" : "locked";
+  adminLockStateEl.className = unlocked ? "admin-state unlocked" : "admin-state";
+  return unlocked;
+}
+
+function setTraceReadout({ headline, confidence, decision, points, source } = {}) {
+  if (headline) {
+    traceHeadlineEl.textContent = headline;
+  }
+  if (confidence) {
+    traceConfidenceEl.textContent = confidence;
+  }
+  if (decision) {
+    traceDecisionEl.textContent = decision;
+  }
+  if (typeof points !== "undefined" && points !== null) {
+    tracePointsEl.textContent = points;
+  }
+  if (source) {
+    sourceSignalEl.textContent = source;
+  }
+}
+
 function renderResult(result) {
   statusEl.textContent = "resolved";
   agentModeEl.textContent = "stored trace";
@@ -88,6 +119,13 @@ function renderResult(result) {
   pointCountEl.textContent = result.tenantPointCount;
   topBrainCountEl.textContent = result.tenantPointCount;
   topLastResolvedEl.textContent = "now";
+  setTraceReadout({
+    headline: "Autonomous response verified",
+    confidence: `${result.match.similarityPercent}%`,
+    decision: result.recommendation,
+    points: result.tenantPointCount,
+    source: `${result.alert.alertId} received from ${result.alert.service}.`,
+  });
   incidentEl.textContent = `${result.match.incidentId}: ${result.match.rootCause}`;
   verificationEl.textContent = result.verification.signal;
   learnedEl.textContent = `${result.learnedIncident.incidentId} written back to Qdrant for ${result.learnedIncident.orgId}.`;
@@ -104,11 +142,19 @@ function renderResult(result) {
 function renderWebhookIntegration(integration) {
   activeWebhookIntegration = integration;
   statusEl.textContent = "webhook ready";
+  agentModeEl.textContent = "intake armed";
   narrativeEl.textContent = "Signed source webhook generated. Connect it in the source app and failed events will enter OperaIQ.";
+  setTraceReadout({
+    headline: "Signed source intake armed",
+    confidence: "waiting",
+    decision: "listen_for_failure",
+    source: `Webhook minted for ${integration.orgId}/${integration.project}.`,
+  });
   webhookUrlEl.textContent = integration.webhookUrl;
-  webhookAuthEl.textContent = `${integration.authMode} · ${integration.deliveryMethod}`;
+  webhookAuthEl.textContent = `${integration.authMode} · ${integration.deliveryMethod} · source app needs no admin key`;
   webhookPathEl.textContent = integration.webhookPath;
   webhookResultEl.textContent = "Webhook URL ready for the selected org/project.";
+  renderAdminAccessState();
 }
 
 function formatEventTime(value) {
@@ -134,6 +180,13 @@ function renderLatestIncident(activity) {
   actionEl.innerHTML = escapeHtml(incident.actionTaken).replaceAll("_", "_<wbr>");
   actionNarrativeEl.textContent = incident.actionTaken;
   similarityEl.textContent = "memory";
+  setTraceReadout({
+    headline: "Latest source event is resolved",
+    confidence: "memory",
+    decision: incident.actionTaken,
+    points: activity.tenantPointCount ?? "--",
+    source: `${incident.incidentId} stored for ${incident.service}.`,
+  });
   incidentEl.textContent = `${incident.incidentId}: ${incident.rootCause}`;
   verificationEl.textContent = incident.resolution;
   learnedEl.textContent = `${incident.incidentId} is now available for the next matching event.`;
@@ -145,6 +198,7 @@ function renderLatestIncident(activity) {
   serviceCellEl.textContent = incident.service;
   severityChipEl.textContent = incident.severity;
   webhookEventEl.textContent = `${incident.incidentId} written back from source webhook flow.`;
+  webhookResultEl.textContent = `${incident.incidentId} written back from source webhook flow.`;
   tenantStateEl.textContent = "passed";
   writeStateEl.textContent = "written";
   writeDotEl.className = "status-dot live";
@@ -152,9 +206,17 @@ function renderLatestIncident(activity) {
 }
 
 function renderTokenMissing() {
-  statusEl.textContent = "token required";
-  narrativeEl.textContent = "Paste the operator token before generating a webhook URL or using fallback resolve.";
-  webhookResultEl.textContent = "Operator token required for this production write path.";
+  statusEl.textContent = "admin locked";
+  agentModeEl.textContent = "locked";
+  narrativeEl.textContent = "Admin key is required to mint signed intake URLs. The source app will only use the signed webhook URL.";
+  webhookResultEl.textContent = "Unlock owner access first. Source delivery does not need the admin key.";
+  setTraceReadout({
+    headline: "Owner access is locked",
+    confidence: "--",
+    decision: "unlock_to_mint_url",
+    source: "Signed URL minting is protected because it creates a write-capable intake route.",
+  });
+  renderAdminAccessState();
 }
 
 function renderError(error) {
@@ -298,11 +360,18 @@ async function resolveCurrentAlert() {
     return;
   }
 
+  renderAdminAccessState();
   setBusy(true);
   statusEl.textContent = "embedding";
   agentModeEl.textContent = "agent active";
   setIncidentState("in_progress");
   narrativeEl.textContent = "Embedding alert and querying Qdrant with orgId filter.";
+  setTraceReadout({
+    headline: "Qdrant recall in progress",
+    confidence: "searching",
+    decision: "pending",
+    source: "Operator fallback alert is being embedded and matched.",
+  });
 
   try {
     await assertMemoryReady();
@@ -337,10 +406,17 @@ async function generateWebhookIntegration() {
     return null;
   }
 
+  renderAdminAccessState();
   setBusy(true);
   statusEl.textContent = "registering";
   narrativeEl.textContent = "Registering a signed source webhook URL for this org and project.";
   webhookResultEl.textContent = "Generating webhook URL.";
+  setTraceReadout({
+    headline: "Minting signed intake URL",
+    confidence: "waiting",
+    decision: "register_webhook",
+    source: "Owner access accepted; source app credential is being prepared.",
+  });
 
   try {
     return await requestWebhookIntegration();
@@ -394,10 +470,13 @@ async function loadLatestIncident() {
 resolveButton.addEventListener("click", resolveCurrentAlert);
 generateWebhookButton.addEventListener("click", generateWebhookIntegration);
 copyWebhookButton.addEventListener("click", copyWebhookUrl);
+apiTokenInput.addEventListener("input", renderAdminAccessState);
 
 prepareMemoryFromReadiness()
   .then(() => loadLatestIncident())
   .catch(renderError);
+
+renderAdminAccessState();
 
 setInterval(() => {
   loadLatestIncident().catch(() => null);

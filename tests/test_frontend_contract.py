@@ -13,9 +13,12 @@ def test_dashboard_exposes_alert_webhook_and_proof_sections() -> None:
     assert 'id="generate-webhook"' in html
     assert 'id="apiToken"' in html
     assert 'type="password"' in html
+    assert "Owner access" in html
+    assert "source app" in html.lower()
     assert 'id="send-source-event"' not in html
     assert 'id="fire-' + 'webhook"' not in html
-    assert "Agent Reasoning Panel" in html
+    assert "Agent Reasoning Cockpit" in html
+    assert 'aria-label="Agent reasoning cockpit"' in html
 
 
 def test_dashboard_never_resets_seed_from_browser_flow() -> None:
@@ -39,6 +42,7 @@ def test_dashboard_generates_signed_webhook_before_source_delivery() -> None:
     assert 'postJson("/api/integrations/webhook", integrationPayload())' in javascript
     assert "activeWebhookIntegration" in javascript
     assert "renderTokenMissing()" in javascript
+    assert "source app will only use the signed webhook URL" in javascript
     assert "sourceWebhookPayload" not in javascript
 
 

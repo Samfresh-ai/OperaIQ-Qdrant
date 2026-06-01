@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ app_name }}</title>
-    <link rel="stylesheet" href="/static/styles.css?v=latest-feed-2" />
+    <link rel="stylesheet" href="/static/styles.css?v=reasoning-cockpit-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -51,20 +51,32 @@
             <div id="runtimeDetail" class="gate-detail">Production · Qdrant server · Signed source intake</div>
           </section>
 
+          <section class="admin-gate" aria-label="Owner access">
+            <div class="admin-copy">
+              <div class="section-label">Owner access</div>
+              <h2>Admin key unlocks signed URL minting</h2>
+              <p>
+                Source apps only receive the signed webhook URL. The admin key stays in this browser session
+                and protects dashboard write actions.
+              </p>
+            </div>
+            <label class="token-field admin-token-field">
+              Admin key
+              <input
+                id="apiToken"
+                type="password"
+                autocomplete="off"
+                placeholder="Paste admin key once"
+              />
+            </label>
+            <div class="admin-state" id="adminLockState">locked</div>
+          </section>
+
           <section class="webhook-strip" id="services">
             <div class="webhook-copy">
               <div class="section-label">Source webhook</div>
               <h2>Alert intake URL for Qdrant-backed response</h2>
-              <p>Generate a fresh signed URL. Put it in the source app. Failure events go straight to OperaIQ.</p>
-              <label class="token-field">
-                Operator token
-                <input
-                  id="apiToken"
-                  type="password"
-                  autocomplete="off"
-                  placeholder="Required for webhook generation and fallback resolve"
-                />
-              </label>
+              <p>Generate a fresh signed URL, put it in the source app, and let failed events enter OperaIQ without exposing the admin key.</p>
               <code id="webhookUrl">Generate a signed URL for this org/project.</code>
               <div class="webhook-meta">
                 <span id="webhookAuth">signed-url</span>
@@ -74,6 +86,62 @@
             <div class="webhook-actions">
               <button class="primary-button" id="generate-webhook" type="button">Generate fresh URL</button>
               <button class="secondary-button" id="copy-webhook" type="button">Copy URL</button>
+            </div>
+          </section>
+
+          <section class="reasoning-panel panel" aria-label="Agent reasoning cockpit">
+            <div class="panel-title reasoning-title">
+              <span>Agent Reasoning Cockpit</span>
+              <small id="agentMode">standing by</small>
+            </div>
+            <div class="agent-active-indicator" aria-hidden="true"></div>
+            <div class="reasoning-core">
+              <div class="trace-brief">
+                <div class="trace-kicker">QDRANT MEMORY TRACE</div>
+                <h2 id="traceHeadline">Waiting for source failure event</h2>
+                <p id="narrative">Waiting for signed source delivery.</p>
+                <div class="trace-meta">
+                  <span>org-scoped recall</span>
+                  <span>signed intake</span>
+                  <span>learns after verification</span>
+                </div>
+              </div>
+              <div class="trace-readout" aria-label="Current agent decision">
+                <div>
+                  <span>Recall confidence</span>
+                  <strong id="traceConfidence">--</strong>
+                </div>
+                <div>
+                  <span>Selected action</span>
+                  <strong id="traceDecision">--</strong>
+                </div>
+                <div>
+                  <span>Memory points</span>
+                  <strong id="tracePoints">--</strong>
+                </div>
+              </div>
+            </div>
+            <div class="reasoning-steps">
+              <div class="reasoning-step">
+                <div class="step-label receive">01 RECEIVE</div>
+                <p id="sourceSignal">Signed webhook URL is ready for the source app.</p>
+              </div>
+              <div class="reasoning-step">
+                <div class="step-label recall">02 RECALL</div>
+                <p id="incident">No incident recalled yet.</p>
+              </div>
+              <div class="reasoning-step">
+                <div class="step-label act">03 ACT</div>
+                <p id="actionNarrative">No action selected yet.</p>
+              </div>
+              <div class="reasoning-step">
+                <div class="step-label verify">04 VERIFY</div>
+                <p id="verification">No verification run yet.</p>
+              </div>
+              <div class="reasoning-step">
+                <div class="step-label learn">05 LEARN</div>
+                <p id="learned">No write-back yet.</p>
+              </div>
             </div>
           </section>
 
@@ -107,36 +175,6 @@
                     </tr>
                   </tbody>
                 </table>
-              </div>
-            </section>
-
-            <section class="reasoning-panel panel">
-              <div class="panel-title">
-                <span>Agent Reasoning Panel</span>
-                <small id="agentMode">stored trace</small>
-              </div>
-              <div class="agent-active-indicator" aria-hidden="true"></div>
-              <div class="reasoning-steps">
-                <div class="reasoning-step">
-                  <div class="step-label receive">[RECEIVE]</div>
-                  <p id="narrative">Waiting for signed source delivery.</p>
-                </div>
-                <div class="reasoning-step">
-                  <div class="step-label recall">[RECALL]</div>
-                  <p id="incident">No incident recalled yet.</p>
-                </div>
-                <div class="reasoning-step">
-                  <div class="step-label act">[ACT]</div>
-                  <p id="actionNarrative">No action selected yet.</p>
-                </div>
-                <div class="reasoning-step">
-                  <div class="step-label verify">[VERIFY]</div>
-                  <p id="verification">No verification run yet.</p>
-                </div>
-                <div class="reasoning-step">
-                  <div class="step-label learn">[LEARN]</div>
-                  <p id="learned">No write-back yet.</p>
-                </div>
               </div>
             </section>
           </section>
@@ -250,6 +288,6 @@
       </div>
     </div>
 
-    <script src="/static/app.js?v=latest-feed-2"></script>
+    <script src="/static/app.js?v=reasoning-cockpit-1"></script>
   </body>
 </html>
