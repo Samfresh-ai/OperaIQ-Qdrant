@@ -55,6 +55,26 @@ def record(checks: list[dict[str, object]], name: str, passed: bool, evidence: o
         raise AssertionError(f"{name} failed: {sanitize(evidence)}")
 
 
+def response_matches_redis_runbook(result: dict[str, Any]) -> bool:
+    match = result.get("match") or {}
+    verification = result.get("verification") or {}
+    learned = result.get("learnedIncident") or {}
+    root_cause = str(match.get("rootCause") or learned.get("rootCause") or "")
+    resolution = str(match.get("resolution") or learned.get("resolution") or "")
+    incident_chain = "inc-redis-econnreset-2026-05-21" in root_cause or match.get("incidentId") == "inc-redis-econnreset-2026-05-21"
+    return (
+        match.get("service") == "checkout-api"
+        and match.get("severity") == "sev1"
+        and float(match.get("similarity") or 0) >= 0.75
+        and incident_chain
+        and "rotate_connection_pool" in resolution
+        and result.get("recommendation") == "rotate_connection_pool"
+        and verification.get("verified") is True
+        and learned.get("orgId") == "acme-retail"
+        and learned.get("resolved") is True
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Prove a real failing source app can drive OperaIQ through the public webhook flow."
@@ -144,10 +164,7 @@ def main() -> None:
         record(
             checks,
             "operaiq_autonomous_response_completed",
-            result.get("match", {}).get("incidentId") == "inc-redis-econnreset-2026-05-21"
-            and result.get("recommendation") == "rotate_connection_pool"
-            and result.get("verification", {}).get("verified") is True
-            and (result.get("learnedIncident") or {}).get("orgId") == "acme-retail",
+            response_matches_redis_runbook(result),
             last_json,
         )
 
