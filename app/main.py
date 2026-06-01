@@ -12,6 +12,7 @@ from app.memory_service import IncidentMemoryService
 from app.models import (
     AppLogEvent,
     HealthResponse,
+    LatestIncidentResponse,
     LogIngestRequest,
     LogIngestResponse,
     PatternWatchRequest,
@@ -133,6 +134,26 @@ def readiness() -> ReadinessResponse:
         issues=issues,
         warnings=warnings,
         qdrant=report,
+    )
+
+
+@app.get("/api/incidents/latest", response_model=LatestIncidentResponse)
+def latest_incident(orgId: str = DEFAULT_ALERT.orgId) -> LatestIncidentResponse:
+    service = get_memory_service()
+    try:
+        incident = service.latest_resolved_memory(orgId)
+        tenant_point_count = service.count_for_org(orgId)
+    except LookupError:
+        incident = None
+        tenant_point_count = None
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return LatestIncidentResponse(
+        orgId=orgId,
+        found=incident is not None,
+        incident=incident,
+        tenantPointCount=tenant_point_count,
     )
 
 

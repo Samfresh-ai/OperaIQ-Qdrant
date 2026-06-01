@@ -65,12 +65,21 @@ EC2 / Docker Compose
 
 Do not use in-memory Qdrant for production. `/runtime/readiness` reports unsafe runtime state when `QDRANT_URL=:memory:`.
 
+Current hosted deployment:
+
+- Public app: `https://operaiq.onrender.com`
+- Runtime: Render web service, independent of the local terminal.
+- Memory: hosted/server Qdrant collection `incident_memories`.
+- Current readiness: production `ready=true`, Qdrant mode `server`, vector size `384`, and payload indexes for `createdAt`, `kind`, `orgId`, `project`, `resolved`, `service`, and `severity`.
+- Local proof scripts and local source apps stop when the PC is off. The public Render app and hosted Qdrant do not depend on the PC staying on.
+
 ---
 
 ## Production Controls
 
 - `/api/integrations/webhook` generates a signed per-org/project webhook URL.
 - `/api/webhooks/{orgId}/{project}/{signature}` accepts source events without exposing the operator token.
+- `/api/incidents/latest?orgId=<org>` lets the dashboard show the newest resolved Qdrant memory after an external source app posts a failure event.
 - `OPERAIQ_WEBHOOK_SECRET` signs generated webhook URLs and rotates them when changed.
 - `OPERAIQ_API_TOKEN` protects operator/admin write paths.
 - `/health` reports app state, Qdrant mode, collection status, payload indexes, vector size, and tenant point count.
@@ -137,6 +146,7 @@ learned_incident=...
 |---|---|
 | `POST /api/integrations/webhook` | Generates a signed webhook URL for an org/project. |
 | `POST /api/webhooks/{orgId}/{project}/{signature}` | Receives source events, recalls memory, verifies response, and writes learned memory. |
+| `GET /api/incidents/latest?orgId=<org>` | Reads the newest resolved incident memory for the dashboard. |
 | `POST /api/alerts/resolve` | Operator fallback for resolving an existing alert payload. |
 | `POST /api/seed?reset=false` | Idempotently creates baseline resolved memory. Reset is blocked unless explicitly enabled. |
 | `POST /api/app/logs` | Internal/source-log intake for unresolved signal memory. |
@@ -187,12 +197,13 @@ That script starts the checkout source app, lets `/checkout` return a real `503`
 | Component | State |
 |---|---|
 | Autonomous source webhook | Implemented with signed per-org/project URLs |
-| Qdrant server mode | Verified locally with official Qdrant server |
+| Qdrant server mode | Verified on hosted public runtime |
 | Tenant-filtered recall | Verified |
-| Payload indexes | Verified in server mode |
+| Payload indexes | Verified on hosted/server Qdrant |
 | Source event intake | Implemented |
 | Operator fallback resolve | Implemented |
 | Learned memory write-back | Verified |
 | Render deployment config | Implemented |
-| Hosted Qdrant credentials | Not committed; set in deploy environment |
-| Public Render URL | Requires creating the Render service from `render.yaml` |
+| Hosted Qdrant credentials | Set in deploy environment, not committed |
+| Public Render URL | Live at `https://operaiq.onrender.com` |
+| Failing app source proof | Verified: source app `503` -> signed webhook -> Qdrant recall -> autonomous response -> learned memory |

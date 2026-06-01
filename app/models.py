@@ -128,6 +128,13 @@ class WebhookIntegrationResponse(BaseModel):
     expectedPayload: dict[str, object]
 
 
+class LatestIncidentResponse(BaseModel):
+    orgId: str
+    found: bool
+    incident: IncidentMemory | None = None
+    tenantPointCount: int | None = None
+
+
 class QdrantCollectionReport(BaseModel):
     collection: str
     mode: str

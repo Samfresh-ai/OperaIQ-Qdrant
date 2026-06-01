@@ -202,6 +202,36 @@ class IncidentMemoryService:
             narrative=narrative,
         )
 
+    def latest_resolved_memory(self, org_id: str, limit: int = 100) -> IncidentMemory | None:
+        if not self.client.collection_exists(collection_name=self.collection):
+            raise LookupError(f"Qdrant collection {self.collection} does not exist")
+
+        payloads: list[dict[str, object]] = []
+        try:
+            points, _ = self.client.scroll(
+                collection_name=self.collection,
+                scroll_filter=org_resolved_filter(org_id),
+                order_by=models.OrderBy(key="createdAt", direction=models.Direction.DESC),
+                with_payload=True,
+                limit=1,
+            )
+            payloads = [point.payload or {} for point in points]
+        except Exception:
+            points, _ = self.client.scroll(
+                collection_name=self.collection,
+                scroll_filter=org_resolved_filter(org_id),
+                with_payload=True,
+                limit=limit,
+            )
+            payloads = [point.payload or {} for point in points]
+
+        payloads = [payload for payload in payloads if payload.get("resolved") is True]
+        if not payloads:
+            return None
+
+        latest = max(payloads, key=lambda item: str(item.get("createdAt", "")))
+        return IncidentMemory.model_validate(latest)
+
     def count_for_org(self, org_id: str) -> int:
         result = self.client.count(
             collection_name=self.collection,

@@ -109,6 +109,52 @@ function renderWebhookIntegration(integration) {
   webhookResultEl.textContent = "Webhook URL ready for the selected org/project.";
 }
 
+function formatEventTime(value) {
+  if (!value) {
+    return "unknown";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "unknown";
+  }
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function renderLatestIncident(activity) {
+  if (!activity?.found || !activity.incident) {
+    return;
+  }
+
+  const incident = activity.incident;
+  statusEl.textContent = "resolved";
+  agentModeEl.textContent = "qdrant memory";
+  narrativeEl.textContent = `Latest resolved source event stored for ${incident.orgId}.`;
+  actionEl.innerHTML = escapeHtml(incident.actionTaken).replaceAll("_", "_<wbr>");
+  actionNarrativeEl.textContent = incident.actionTaken;
+  similarityEl.textContent = "memory";
+  incidentEl.textContent = `${incident.incidentId}: ${incident.rootCause}`;
+  verificationEl.textContent = incident.resolution;
+  learnedEl.textContent = `${incident.incidentId} is now available for the next matching event.`;
+  pointsEl.textContent = activity.tenantPointCount ?? "--";
+  pointCountEl.textContent = activity.tenantPointCount ?? "--";
+  topBrainCountEl.textContent = activity.tenantPointCount ?? "--";
+  topLastResolvedEl.textContent = formatEventTime(incident.createdAt);
+  incidentTitleEl.textContent = incident.symptoms?.[0] || "Resolved source event";
+  serviceCellEl.textContent = incident.service;
+  severityChipEl.textContent = incident.severity;
+  webhookEventEl.textContent = `${incident.incidentId} written back from source webhook flow.`;
+  tenantStateEl.textContent = "passed";
+  writeStateEl.textContent = "written";
+  writeDotEl.className = "status-dot live";
+  setIncidentState("resolved");
+}
+
+function renderTokenMissing() {
+  statusEl.textContent = "token required";
+  narrativeEl.textContent = "Paste the operator token before generating a webhook URL or using fallback resolve.";
+  webhookResultEl.textContent = "Operator token required for this production write path.";
+}
+
 function renderError(error) {
   statusEl.textContent = "error";
   narrativeEl.textContent = error.message || "Request failed.";
@@ -120,6 +166,10 @@ function renderError(error) {
 function authHeaders() {
   const token = apiTokenInput.value.trim();
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function hasOperatorToken() {
+  return apiTokenInput.value.trim().length > 0;
 }
 
 async function postJson(url, body = null) {
@@ -241,6 +291,11 @@ async function assertMemoryReady() {
 }
 
 async function resolveCurrentAlert() {
+  if (!hasOperatorToken()) {
+    renderTokenMissing();
+    return;
+  }
+
   setBusy(true);
   statusEl.textContent = "embedding";
   agentModeEl.textContent = "agent active";
@@ -250,6 +305,7 @@ async function resolveCurrentAlert() {
   try {
     await assertMemoryReady();
     renderResult(await postJson("/api/alerts/resolve", alertPayload()));
+    await loadLatestIncident();
   } catch (error) {
     renderError(error);
   } finally {
@@ -263,12 +319,22 @@ function integrationMatchesForm(integration) {
 }
 
 async function requestWebhookIntegration() {
+  if (!hasOperatorToken()) {
+    renderTokenMissing();
+    return null;
+  }
+
   const integration = await postJson("/api/integrations/webhook", integrationPayload());
   renderWebhookIntegration(integration);
   return integration;
 }
 
 async function generateWebhookIntegration() {
+  if (!hasOperatorToken()) {
+    renderTokenMissing();
+    return null;
+  }
+
   setBusy(true);
   statusEl.textContent = "registering";
   narrativeEl.textContent = "Registering a signed source webhook URL for this org and project.";
@@ -292,6 +358,11 @@ async function ensureWebhookIntegration() {
 }
 
 async function copyWebhookUrl() {
+  if (!hasOperatorToken() && !integrationMatchesForm(activeWebhookIntegration)) {
+    renderTokenMissing();
+    return;
+  }
+
   setBusy(true);
   try {
     const integration = await ensureWebhookIntegration();
@@ -307,8 +378,25 @@ async function copyWebhookUrl() {
   }
 }
 
+async function loadLatestIncident() {
+  const params = new URLSearchParams({ orgId: document.querySelector("#orgId").value });
+  const response = await fetch(`/api/incidents/latest?${params.toString()}`, { cache: "no-store" });
+  if (!response.ok) {
+    return null;
+  }
+  const activity = await response.json();
+  renderLatestIncident(activity);
+  return activity;
+}
+
 resolveButton.addEventListener("click", resolveCurrentAlert);
 generateWebhookButton.addEventListener("click", generateWebhookIntegration);
 copyWebhookButton.addEventListener("click", copyWebhookUrl);
 
-prepareMemoryFromReadiness().catch(renderError);
+prepareMemoryFromReadiness()
+  .then(() => loadLatestIncident())
+  .catch(renderError);
+
+setInterval(() => {
+  loadLatestIncident().catch(() => null);
+}, 8000);

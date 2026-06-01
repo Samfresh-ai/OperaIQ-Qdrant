@@ -181,6 +181,14 @@ def test_generated_signed_webhook_accepts_source_event_and_writes_memory(monkeyp
     assert result["resolution"]["recommendation"] == "rotate_connection_pool"
     assert result["resolution"]["tenantPointCount"] == 10
 
+    latest = client.get(f"/api/incidents/latest?orgId={DEFAULT_ALERT.orgId}")
+    assert latest.status_code == 200
+    latest_json = latest.json()
+    assert latest_json["found"] is True
+    assert latest_json["tenantPointCount"] == 10
+    assert latest_json["incident"]["incidentId"].startswith("learned-qdrant-watch-unit-webhook-redis")
+    assert latest_json["incident"]["actionTaken"] == "rotate_connection_pool"
+
 
 def test_seed_without_reset_preserves_custom_org_data(monkeypatch) -> None:
     service = IncidentMemoryService(

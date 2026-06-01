@@ -11,6 +11,8 @@ def test_dashboard_exposes_alert_webhook_and_proof_sections() -> None:
     assert 'href="#services"' in html
     assert 'href="#proof"' in html
     assert 'id="generate-webhook"' in html
+    assert 'id="apiToken"' in html
+    assert 'type="password"' in html
     assert 'id="send-source-event"' not in html
     assert 'id="fire-' + 'webhook"' not in html
     assert "Agent Reasoning Panel" in html
@@ -36,7 +38,16 @@ def test_dashboard_generates_signed_webhook_before_source_delivery() -> None:
 
     assert 'postJson("/api/integrations/webhook", integrationPayload())' in javascript
     assert "activeWebhookIntegration" in javascript
+    assert "renderTokenMissing()" in javascript
     assert "sourceWebhookPayload" not in javascript
+
+
+def test_dashboard_refreshes_latest_qdrant_incident() -> None:
+    javascript = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+
+    assert "/api/incidents/latest" in javascript
+    assert "loadLatestIncident()" in javascript
+    assert "topLastResolvedEl.textContent = formatEventTime" in javascript
 
 
 def test_dashboard_payload_index_evidence_matches_runtime_indexes() -> None:

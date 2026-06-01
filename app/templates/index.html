@@ -56,6 +56,15 @@
               <div class="section-label">Source webhook</div>
               <h2>Alert intake URL for Qdrant-backed response</h2>
               <p>Generate a fresh signed URL. Put it in the source app. Failure events go straight to OperaIQ.</p>
+              <label class="token-field">
+                Operator token
+                <input
+                  id="apiToken"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="Required for webhook generation and fallback resolve"
+                />
+              </label>
               <code id="webhookUrl">Generate a signed URL for this org/project.</code>
               <div class="webhook-meta">
                 <span id="webhookAuth">signed-url</span>
@@ -169,10 +178,6 @@
           <details class="operator-fallback panel">
             <summary>Operator fallback alert</summary>
             <div class="fallback-grid">
-              <label>
-                Operator token
-                <input id="apiToken" autocomplete="off" placeholder="Required for production write paths" />
-              </label>
               <label>
                 Org
                 <input id="orgId" value="{{ default_alert.orgId }}" />
