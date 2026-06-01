@@ -1,43 +1,61 @@
-name: operaiq-aws
+name: sentinel-aws
 
 services:
-  qdrant:
-    image: qdrant/qdrant:v1.18.1
-    hostname: qdrant
+  splunk:
+    image: splunk/splunk:9.4
+    hostname: splunk
     restart: unless-stopped
     environment:
-      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY in .env.aws}
-      QDRANT__STORAGE__SNAPSHOTS_PATH: /qdrant/snapshots
+      SPLUNK_START_ARGS: --accept-license
+      SPLUNK_GENERAL_TERMS: --accept-sgt-current-at-splunk-com
+      SPLUNK_PASSWORD: ${SPLUNK_PASSWORD:?Set SPLUNK_PASSWORD in .env.aws}
+      SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:?Set SPLUNK_HEC_TOKEN in .env.aws}
     volumes:
-      - qdrant-storage:/qdrant/storage
-      - qdrant-snapshots:/qdrant/snapshots
+      - splunk-etc:/opt/splunk/etc
+      - splunk-var:/opt/splunk/var
+      - ./deploy/aws/splunk-default.yml:/tmp/defaults/default.yml:ro
     ports:
-      - "127.0.0.1:6333:6333"
+      - "8000:8000"
+      - "8088:8088"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sk -u admin:$${SPLUNK_PASSWORD} https://localhost:8089/services/server/info?output_mode=json >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 90s
 
-  app:
+  sentinel:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: apps/api/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Set NEXT_PUBLIC_API_URL in .env.aws}
+        NEXT_PUBLIC_SPLUNK_DASHBOARD_URL: ${NEXT_PUBLIC_SPLUNK_DASHBOARD_URL:?Set NEXT_PUBLIC_SPLUNK_DASHBOARD_URL in .env.aws}
     restart: unless-stopped
+    env_file:
+      - .env.aws
     environment:
-      APP_NAME: ${APP_NAME:-OperaIQ}
-      APP_ENV: production
-      PORT: "8097"
-      OPERAIQ_PUBLIC_URL: ${OPERAIQ_PUBLIC_URL:-}
-      QDRANT_URL: http://qdrant:6333
-      QDRANT_API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY in .env.aws}
-      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-incident_memories}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
-      OPERAIQ_API_TOKEN: ${OPERAIQ_API_TOKEN:?Set OPERAIQ_API_TOKEN in .env.aws}
-      OPERAIQ_WEBHOOK_SECRET: ${OPERAIQ_WEBHOOK_SECRET:?Set OPERAIQ_WEBHOOK_SECRET in .env.aws}
-      ALLOW_UNAUTHENTICATED_WRITES: "false"
-      ALLOW_COLLECTION_RESET: ${ALLOW_COLLECTION_RESET:-false}
-      PROOF_ARTIFACTS_DIR: ${PROOF_ARTIFACTS_DIR:-artifacts/proof}
+      NODE_ENV: production
+      PORT: 3001
+      SPLUNK_HOST: splunk
+      SPLUNK_MGMT_URL: ${SPLUNK_MGMT_URL:-https://splunk:8089}
+      SPLUNK_HEC_URL: ${SPLUNK_HEC_URL:-http://splunk:8088/services/collector/event}
+      SPLUNK_USERNAME: ${SPLUNK_USERNAME:-admin}
+      SPLUNK_PASSWORD: ${SPLUNK_PASSWORD:?Set SPLUNK_PASSWORD in .env.aws}
+      SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:?Set SPLUNK_HEC_TOKEN in .env.aws}
+      SPLUNK_TLS_REJECT_UNAUTHORIZED: ${SPLUNK_TLS_REJECT_UNAUTHORIZED:-false}
+      SPLUNK_GATEWAY_TOKEN: ""
+      SPLUNK_CF_ACCESS_CLIENT_ID: ""
+      SPLUNK_CF_ACCESS_CLIENT_SECRET: ""
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.aws}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Set WEBHOOK_SECRET in .env.aws}
+      AGENT_TOOL_SECRET: ${AGENT_TOOL_SECRET:?Set AGENT_TOOL_SECRET in .env.aws}
     ports:
-      - "8097:8097"
+      - "3001:3001"
     depends_on:
-      - qdrant
+      splunk:
+        condition: service_healthy
 
 volumes:
-  qdrant-storage:
-  qdrant-snapshots:
+  splunk-etc:
+  splunk-var:

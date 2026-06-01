@@ -4,30 +4,12 @@ services:
     runtime: docker
     plan: free
     region: oregon
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./apps/web/Dockerfile
     dockerContext: .
-    healthCheckPath: /health
+    healthCheckPath: /
     autoDeploy: true
     envVars:
-      - key: APP_NAME
-        value: OperaIQ
-      - key: APP_ENV
-        value: production
-      - key: QDRANT_URL
-        sync: false
-      - key: QDRANT_API_KEY
-        sync: false
-      - key: QDRANT_COLLECTION
-        value: incident_memories
-      - key: EMBEDDING_MODEL
-        value: BAAI/bge-small-en-v1.5
-      - key: OPERAIQ_API_TOKEN
-        generateValue: true
-      - key: OPERAIQ_WEBHOOK_SECRET
-        generateValue: true
-      - key: ALLOW_UNAUTHENTICATED_WRITES
-        value: "false"
-      - key: ALLOW_COLLECTION_RESET
-        value: "false"
-      - key: PROOF_ARTIFACTS_DIR
-        value: artifacts/proof
+      - key: NEXT_PUBLIC_API_URL
+        value: https://operaiq-api.3.208.71.125.sslip.io
+      - key: NEXT_PUBLIC_QDRANT_DASHBOARD_URL
+        value: ""

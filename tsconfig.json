@@ -1,0 +1,11 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/splunk-brain" },
+    { "path": "./packages/splunk-mcp" },
+    { "path": "./packages/agent" },
+    { "path": "./apps/api" },
+    { "path": "./apps/web" }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@sentinel/shared": ["packages/shared/src/index.ts"],
+      "@sentinel/agent": ["packages/agent/src/index.ts"],
+      "@sentinel/splunk-brain": ["packages/splunk-brain/src/index.ts"],
+      "@sentinel/splunk-brain/models": ["packages/splunk-brain/src/models.ts"],
+      "@sentinel/splunk-mcp": ["packages/splunk-mcp/src/index.ts"]
+    }
+  }
+}

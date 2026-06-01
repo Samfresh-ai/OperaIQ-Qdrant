@@ -1,77 +1,98 @@
-# OperaIQ Render Deployment
+# Sentinel Render Deployment
 
-Render hosts the OperaIQ app. Qdrant should live outside the Render web container: use Qdrant Cloud first, or another hosted Qdrant server with TLS and an API key.
+Render can run Sentinel, but keep the web URL and API URL conceptually separate. The API is what Splunk calls. The live URL is what users and judges open.
 
 ## Preferred Shape
 
-- `operaiq`: Docker web service from the repo root `Dockerfile`.
-- Instance type: `free` in `render.yaml` for the no-card hosted path; upgrade before relying on it for production traffic.
-- Health check path: `/health`.
-- Readiness path: `/runtime/readiness`.
-- Vector store: Qdrant Cloud or hosted Qdrant server.
-- Write protection: `OPERAIQ_API_TOKEN` on every production write path.
-- Inbound incident source: signed webhook URLs generated with `OPERAIQ_WEBHOOK_SECRET`.
+- `sentinel-api`: Docker web service from `apps/api/Dockerfile`, health check `/health`.
+- `sentinel-web`: static/web service from `apps/web/Dockerfile` or another host, pointed at `sentinel-api`.
+- Splunk target: Splunk Cloud, externally reachable Splunk Enterprise, or a protected tunnel to the verified local Splunk Enterprise instance.
 
-## Required Variables
+The temporary combined shape still works because `apps/api/Dockerfile` serves the built web UI and API from one service, but do not depend on that as the final architecture if separate URLs are available.
+
+## Required API Variables
 
 ```text
-APP_NAME=OperaIQ
-APP_ENV=production
-OPERAIQ_PUBLIC_URL=https://<operaiq-render-url>
-QDRANT_URL=https://<cluster>.<region>.<provider>.cloud.qdrant.io
-QDRANT_API_KEY=<secret>
-QDRANT_COLLECTION=incident_memories
-EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
-OPERAIQ_API_TOKEN=<generated secret>
-OPERAIQ_WEBHOOK_SECRET=<generated secret>
-ALLOW_UNAUTHENTICATED_WRITES=false
-ALLOW_COLLECTION_RESET=false
-PROOF_ARTIFACTS_DIR=artifacts/proof
+NODE_ENV=production
+SENTINEL_RUNTIME_ENV=production
+SENTINEL_MODE=true
+AGENT_NAME=Sentinel
+SENTINEL_REMEDIATION_BACKEND=admin-endpoint
+SENTINEL_GENERATION_PROVIDER=nvidia
+NVIDIA_API_KEY=<secret>
+JWT_SECRET=<secret>
+WEBHOOK_SECRET=<secret>
+AGENT_TOOL_SECRET=<secret>
+PUBLIC_APP_URL=https://<sentinel-live-url>
+API_PUBLIC_URL=https://<sentinel-api-url>
+NEXT_PUBLIC_API_URL=https://<sentinel-api-url>
+AGENT_TOOL_EXECUTION_BASE_URL=https://<sentinel-api-url>
+SPLUNK_APP=sentinel
+SPLUNK_INDEX=sentinel
+SPLUNK_DASHBOARD_URL=https://<splunk-web>/en-US/app/sentinel/sentinel_overview
 ```
 
-`render.yaml` prompts for `QDRANT_URL` and `QDRANT_API_KEY`, generates `OPERAIQ_API_TOKEN` and `OPERAIQ_WEBHOOK_SECRET`, sets `/health` as the HTTP health check, and uses Render's free web instance so the service can be created without adding billing details.
-
-## Qdrant Cloud Target
-
-Create the Qdrant Cloud cluster, copy the cluster URL and database API key, then set:
+Monitor both URLs with UptimeRobot or an equivalent external monitor:
 
 ```text
-QDRANT_URL=https://<cluster-url>
-QDRANT_API_KEY=<database-api-key>
+GET https://<sentinel-api-url>/health
+GET https://<sentinel-live-url>/
 ```
 
-Do not use a Qdrant Cloud management key as the app's database key. The app needs database access to one cluster, not account-level management permissions.
+## Splunk Enterprise AWS Gateway Target
 
-## Deploy
+For the verified AWS-hosted Splunk Enterprise gateway:
 
-1. Push the repo to GitHub.
-2. In Render, create a new Blueprint from this repo.
-3. Fill `QDRANT_URL` and `QDRANT_API_KEY` when prompted.
-4. Wait for the Docker deploy to pass `/health`.
-5. Open `/runtime/readiness`; production must be `true` and ready must be `true`.
+```text
+SPLUNK_HOST=sentinel-gw.3.208.71.125.sslip.io
+SPLUNK_MGMT_URL=https://sentinel-gw.3.208.71.125.sslip.io
+SPLUNK_HEC_URL=https://sentinel-gw.3.208.71.125.sslip.io
+SPLUNK_MGMT_PORT=8089
+SPLUNK_HEC_PORT=8088
+SPLUNK_HEC_PROTOCOL=https
+SPLUNK_USERNAME=<secret>
+SPLUNK_PASSWORD=<secret>
+SPLUNK_HEC_TOKEN=<secret>
+SPLUNK_GATEWAY_TOKEN=<secret>
+SPLUNK_CF_ACCESS_CLIENT_ID=
+SPLUNK_CF_ACCESS_CLIENT_SECRET=
+```
 
-## Proof
+Do not use `splunk.paysmat.xyz` for this proof path; that route currently returns Cloudflare 530.
 
-Run this from a trusted machine after the deploy:
+## Splunk Cloud Cutover
+
+Once Splunk Cloud access is available, use the Cloud stack instead of the local tunnel:
+
+```text
+SPLUNK_CLOUD_STACK_HOST=<stack>.splunkcloud.com
+SPLUNK_USERNAME=<secret>
+SPLUNK_PASSWORD=<secret>
+SPLUNK_HEC_TOKEN=<secret>
+SPLUNK_CA_CERT=<optional PEM CA if required>
+SPLUNK_MGMT_URL=
+SPLUNK_HEC_URL=
+SPLUNK_GATEWAY_TOKEN=
+SPLUNK_CF_ACCESS_CLIENT_ID=
+SPLUNK_CF_ACCESS_CLIENT_SECRET=
+```
+
+Sentinel derives management API through Splunk Web and HEC on `:8088`. If Splunk provides separate REST/HEC endpoints, set `SPLUNK_MGMT_URL` and `SPLUNK_HEC_URL` explicitly.
+
+## Readiness
+
+Before submission:
+
+1. Open `/runtime/readiness`; it must return `autonomous-ready`.
+2. Run Splunk setup checks against the target Splunk instance.
+3. Run the direct human-flow proof:
 
 ```bash
-OPERAIQ_API_TOKEN=<secret> \
-uv run python scripts/operaiq_human_flow.py --base-url https://<operaiq-render-url>
+./node_modules/.bin/tsx --conditions=development scripts/sentinel-human-flow.ts
 ```
 
-Required flow:
+The required proof path is:
 
 ```text
-UI loads -> signed webhook URL generated -> source event accepted -> Qdrant recall runs -> OperaIQ responds -> learned memory writes back -> Globex tenant recall stays isolated
+app logs -> Splunk HEC -> Splunk saved search -> webhook -> Sentinel ACT/VERIFY/CLOSE
 ```
-
-## Monitoring
-
-Monitor both:
-
-```text
-GET https://<operaiq-render-url>/health
-GET https://<operaiq-render-url>/runtime/readiness
-```
-
-`/health` is the Render deploy health check. `/runtime/readiness` is the product truth check; do not treat a deploy as ready until it passes.

@@ -1,1 +1,0 @@
-"""OperaIQ incident memory app."""

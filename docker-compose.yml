@@ -1,28 +1,26 @@
 services:
-  app:
-    build: .
-    restart: unless-stopped
-    depends_on:
-      - qdrant
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file:
+      - .env
     environment:
-      APP_NAME: OperaIQ
-      APP_ENV: production
-      PORT: "8097"
-      OPERAIQ_PUBLIC_URL: http://127.0.0.1:8097
-      QDRANT_URL: http://qdrant:6333
-      QDRANT_COLLECTION: incident_memories
-      OPERAIQ_API_TOKEN: local-compose-token
-      OPERAIQ_WEBHOOK_SECRET: local-compose-webhook-secret
-      ALLOW_UNAUTHENTICATED_WRITES: "false"
-      ALLOW_COLLECTION_RESET: "false"
+      NODE_ENV: production
+      PORT: 3001
     ports:
-      - "8097:8097"
+      - "3001:3001"
 
-  qdrant:
-    image: qdrant/qdrant:v1.18.1
-    restart: unless-stopped
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
     ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - ./operaiq_qdrant_storage:/qdrant/storage
+      - "3000:3000"
+    depends_on:
+      - api

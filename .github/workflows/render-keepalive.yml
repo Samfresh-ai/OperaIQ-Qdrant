@@ -1,4 +1,4 @@
-name: OperaIQ Render Keepalive
+name: OperaIQ Keepalive
 
 on:
   schedule:
@@ -7,13 +7,12 @@ on:
 
 jobs:
   ping:
-    if: ${{ vars.OPERAIQ_RENDER_URL != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Ping OperaIQ health
+      - name: Ping OperaIQ API health
         run: |
-          curl --fail --silent --show-error --max-time 60 "${{ vars.OPERAIQ_RENDER_URL }}/health"
-      - name: Ping OperaIQ readiness
+          curl --fail --silent --show-error --max-time 60 https://operaiq-api.3.208.71.125.sslip.io/health
+      - name: Ping OperaIQ web shell
         run: |
-          curl --fail --silent --show-error --max-time 60 "${{ vars.OPERAIQ_RENDER_URL }}/runtime/readiness"
+          curl --fail --silent --show-error --max-time 60 --header "Accept: text/html" https://operaiq.onrender.com/
