@@ -103,6 +103,8 @@ function renderResult(result) {
 
 function renderWebhookIntegration(integration) {
   activeWebhookIntegration = integration;
+  statusEl.textContent = "webhook ready";
+  narrativeEl.textContent = "Signed source webhook generated. Connect it in the source app and failed events will enter OperaIQ.";
   webhookUrlEl.textContent = integration.webhookUrl;
   webhookAuthEl.textContent = `${integration.authMode} · ${integration.deliveryMethod}`;
   webhookPathEl.textContent = integration.webhookPath;
