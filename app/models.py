@@ -45,6 +45,16 @@ class AppLogEvent(BaseModel):
     p95LatencyMs: int = Field(default=0, ge=0)
 
 
+class WebhookIncidentEvent(BaseModel):
+    eventId: str = Field(default_factory=lambda: f"source-{uuid4().hex[:12]}", min_length=3)
+    service: str = Field(min_length=2)
+    severity: Severity
+    message: str = Field(min_length=10)
+    observedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    errorCount: int = Field(default=1, ge=0)
+    p95LatencyMs: int = Field(default=0, ge=0)
+
+
 class LogIngestRequest(BaseModel):
     events: list[AppLogEvent] = Field(min_length=1)
 
@@ -98,9 +108,24 @@ class PatternWatchResult(BaseModel):
     sourceProject: str
     pattern: str
     webhookPath: str
-    webhookFired: bool
+    webhookAccepted: bool
     alert: SplunkAlert
     resolution: ResolutionResult
+
+
+class WebhookIntegrationRequest(BaseModel):
+    orgId: str = Field(min_length=2)
+    project: str = Field(default="checkout-flow", min_length=2)
+
+
+class WebhookIntegrationResponse(BaseModel):
+    orgId: str
+    project: str
+    webhookUrl: str
+    webhookPath: str
+    authMode: str
+    deliveryMethod: str
+    expectedPayload: dict[str, object]
 
 
 class QdrantCollectionReport(BaseModel):

@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.embedder import FastEmbedEmbedder
 from app.memory_service import IncidentMemoryService
 from app.models import (
+    AppLogEvent,
     HealthResponse,
     LogIngestRequest,
     LogIngestResponse,
@@ -18,8 +19,17 @@ from app.models import (
     ReadinessResponse,
     ResolutionResult,
     SplunkAlert,
+    WebhookIncidentEvent,
+    WebhookIntegrationRequest,
+    WebhookIntegrationResponse,
 )
 from app.seed import DEFAULT_ALERT, SEED_INCIDENTS
+from app.webhooks import (
+    verify_webhook_signature,
+    webhook_path,
+    webhook_secret,
+    webhook_url,
+)
 
 
 app = FastAPI(title="OperaIQ", version="0.1.0")
@@ -44,6 +54,34 @@ def require_write_access(authorization: str | None) -> None:
         raise HTTPException(status_code=503, detail="write token is not configured")
     if authorization != f"Bearer {settings.operaiq_api_token}":
         raise HTTPException(status_code=401, detail="valid OperaIQ write token required")
+
+
+def resolve_app_event(
+    service: IncidentMemoryService,
+    event: AppLogEvent,
+    *,
+    inbound_webhook_path: str,
+) -> PatternWatchResult:
+    try:
+        service.ingest_app_logs([event])
+        payload, alert, resolution = service.watch_app_log_patterns(
+            event.orgId,
+            project=event.project,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return PatternWatchResult(
+        sourceEventId=str(payload["eventId"]),
+        sourceProject=str(payload["project"]),
+        pattern=f"{alert.service} {alert.severity} app-log pattern",
+        webhookPath=inbound_webhook_path,
+        webhookAccepted=True,
+        alert=alert,
+        resolution=resolution,
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -140,6 +178,37 @@ def ingest_app_logs(
     )
 
 
+@app.post("/api/integrations/webhook", response_model=WebhookIntegrationResponse)
+def create_webhook_integration(
+    integration: WebhookIntegrationRequest,
+    request: Request,
+    authorization: Annotated[str | None, Header()] = None,
+) -> WebhookIntegrationResponse:
+    require_write_access(authorization)
+    settings = get_settings()
+    path = webhook_path(
+        integration.orgId,
+        integration.project,
+        webhook_secret(settings),
+    )
+    return WebhookIntegrationResponse(
+        orgId=integration.orgId,
+        project=integration.project,
+        webhookUrl=webhook_url(request, settings, path),
+        webhookPath=path,
+        authMode="signed-url",
+        deliveryMethod="POST",
+        expectedPayload={
+            "eventId": "source-event-id",
+            "service": DEFAULT_ALERT.service,
+            "severity": DEFAULT_ALERT.severity,
+            "message": DEFAULT_ALERT.message,
+            "errorCount": DEFAULT_ALERT.errorCount,
+            "p95LatencyMs": DEFAULT_ALERT.p95LatencyMs,
+        },
+    )
+
+
 @app.post("/api/qdrant/watch", response_model=PatternWatchResult)
 def watch_qdrant_patterns(
     request: PatternWatchRequest,
@@ -158,30 +227,53 @@ def watch_qdrant_patterns(
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    source_project = str(payload["project"])
+    settings = get_settings()
+    path = webhook_path(
+        alert.orgId,
+        source_project,
+        webhook_secret(settings),
+    )
     return PatternWatchResult(
         sourceEventId=str(payload["eventId"]),
-        sourceProject=str(payload["project"]),
+        sourceProject=source_project,
         pattern=f"{alert.service} {alert.severity} app-log pattern",
-        webhookPath="/api/webhooks/pattern-alert",
-        webhookFired=True,
+        webhookPath=path,
+        webhookAccepted=True,
         alert=alert,
         resolution=resolution,
     )
 
 
-@app.post("/api/webhooks/pattern-alert", response_model=ResolutionResult)
-def pattern_alert_webhook(
-    alert: SplunkAlert,
-    authorization: Annotated[str | None, Header()] = None,
-) -> ResolutionResult:
-    require_write_access(authorization)
+@app.post("/api/webhooks/{org_id}/{project}/{signature}", response_model=PatternWatchResult)
+def signed_source_webhook(
+    org_id: str,
+    project: str,
+    signature: str,
+    event: WebhookIncidentEvent,
+) -> PatternWatchResult:
+    settings = get_settings()
+    secret = webhook_secret(settings)
+    if not verify_webhook_signature(secret, org_id, project, signature):
+        raise HTTPException(status_code=401, detail="invalid webhook signature")
+
     service = get_memory_service()
-    try:
-        return service.resolve_alert(alert)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except (RuntimeError, ValueError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    app_event = AppLogEvent(
+        orgId=org_id,
+        project=project,
+        eventId=event.eventId,
+        service=event.service,
+        severity=event.severity,
+        message=event.message,
+        observedAt=event.observedAt,
+        errorCount=event.errorCount,
+        p95LatencyMs=event.p95LatencyMs,
+    )
+    return resolve_app_event(
+        service,
+        app_event,
+        inbound_webhook_path=webhook_path(org_id, project, secret),
+    )
 
 
 @app.post("/api/alerts/resolve", response_model=ResolutionResult)

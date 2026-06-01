@@ -12,8 +12,27 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.config import get_settings
-from app.models import AppLogEvent, PatternWatchRequest
+from app.models import WebhookIncidentEvent, WebhookIntegrationRequest
 from app.seed import DEFAULT_ALERT
+
+
+def masked_path(path: str) -> str:
+    parts = path.rstrip("/").split("/")
+    if len(parts) < 2:
+        return path
+    parts[-1] = f"{parts[-1][:6]}...{parts[-1][-4:]}"
+    return "/".join(parts)
+
+
+def sanitize(value):
+    if isinstance(value, dict):
+        return {
+            key: masked_path(item) if key in {"webhookPath", "webhookUrl"} and isinstance(item, str) else sanitize(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [sanitize(item) for item in value]
+    return value
 
 
 def main() -> None:
@@ -35,16 +54,16 @@ def main() -> None:
     headers = {"Authorization": f"Bearer {args.api_token}"} if args.api_token else {}
 
     def record(name: str, passed: bool, evidence: object) -> None:
-        checks.append({"name": name, "passed": passed, "evidence": evidence})
+        checks.append({"name": name, "passed": passed, "evidence": sanitize(evidence)})
         if not passed:
-            raise AssertionError(f"{name} failed: {evidence}")
+            raise AssertionError(f"{name} failed: {sanitize(evidence)}")
 
     with httpx.Client(base_url=args.base_url, timeout=60.0) as client:
         ui = client.get("/")
         record(
             "ui_loads_operaiq_console",
-            ui.status_code == 200 and "watcher finds a pattern" in ui.text,
-            {"status": ui.status_code, "containsWatcherCopy": "watcher finds a pattern" in ui.text},
+            ui.status_code == 200 and "Generate a signed URL" in ui.text,
+            {"status": ui.status_code, "containsWebhookUrl": "Generate a signed URL" in ui.text},
         )
 
         seed = client.post("/api/seed", params={"reset": str(args.reset).lower()}, headers=headers)
@@ -72,9 +91,24 @@ def main() -> None:
             readiness_json,
         )
 
-        app_log = AppLogEvent(
-            orgId=DEFAULT_ALERT.orgId,
-            project=project,
+        integration_request = WebhookIntegrationRequest(orgId=DEFAULT_ALERT.orgId, project=project)
+        integration = client.post(
+            "/api/integrations/webhook",
+            json=integration_request.model_dump(mode="json"),
+            headers=headers,
+        )
+        integration_json = integration.json()
+        record(
+            "signed_webhook_url_generated",
+            integration.status_code == 200
+            and integration_json.get("authMode") == "signed-url"
+            and str(integration_json.get("webhookPath", "")).startswith(
+                f"/api/webhooks/{DEFAULT_ALERT.orgId}/{project}/"
+            ),
+            integration_json,
+        )
+
+        source_event = WebhookIncidentEvent(
             eventId=f"app-log-{generated_at.strftime('%Y%m%d%H%M%S')}",
             service=DEFAULT_ALERT.service,
             severity=DEFAULT_ALERT.severity,
@@ -83,38 +117,22 @@ def main() -> None:
             errorCount=DEFAULT_ALERT.errorCount,
             p95LatencyMs=DEFAULT_ALERT.p95LatencyMs,
         )
-        log = client.post(
-            "/api/app/logs",
-            json={"events": [app_log.model_dump(mode="json")]},
-            headers=headers,
+        source_delivery = client.post(
+            integration_json["webhookPath"],
+            json=source_event.model_dump(mode="json"),
         )
-        log_json = log.json()
+        source_delivery_json = source_delivery.json()
+        acme_json = source_delivery_json.get("resolution", {})
         record(
-            "app_logs_written_to_qdrant",
-            log.status_code == 200
-            and log_json.get("stored") == 1
-            and log_json.get("tenantPointCount") == acme_count_before + 1,
-            log_json,
-        )
-
-        watch_request = PatternWatchRequest(orgId=DEFAULT_ALERT.orgId, project=project)
-        watch = client.post(
-            "/api/qdrant/watch",
-            json=watch_request.model_dump(mode="json"),
-            headers=headers,
-        )
-        watch_json = watch.json()
-        acme_json = watch_json.get("resolution", {})
-        record(
-            "qdrant_watch_fired_webhook_and_operaiq_learned",
-            watch.status_code == 200
-            and watch_json.get("webhookFired") is True
-            and watch_json.get("webhookPath") == "/api/webhooks/pattern-alert"
+            "source_webhook_accepted_and_operaiq_learned",
+            source_delivery.status_code == 200
+            and source_delivery_json.get("webhookAccepted") is True
+            and source_delivery_json.get("webhookPath") == integration_json["webhookPath"]
             and acme_json["match"]["incidentId"] == "inc-redis-econnreset-2026-05-21"
             and acme_json["recommendation"] == "rotate_connection_pool"
             and acme_json["verification"]["verified"] is True
             and acme_json["tenantPointCount"] == acme_count_before + 2,
-            watch_json,
+            source_delivery_json,
         )
 
         globex_alert = DEFAULT_ALERT.model_copy(
@@ -149,9 +167,9 @@ def main() -> None:
         "checks": checks,
         "finalHealth": final_health,
         "proofSummary": {
-            "flow": "app logs -> Qdrant unresolved signal -> watcher webhook -> OperaIQ resolve -> Qdrant learned memory",
-            "loggedEvent": log_json["eventIds"][0],
-            "webhookPath": watch_json["webhookPath"],
+            "flow": "source webhook -> Qdrant unresolved signal -> OperaIQ autonomous response -> Qdrant learned memory",
+            "loggedEvent": source_delivery_json["sourceEventId"],
+            "webhookPath": masked_path(source_delivery_json["webhookPath"]),
             "acmeMatch": acme_json["match"]["incidentId"],
             "acmeAction": acme_json["recommendation"],
             "acmeSimilarityPercent": acme_json["match"]["similarityPercent"],

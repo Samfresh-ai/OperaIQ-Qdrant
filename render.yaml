@@ -23,6 +23,8 @@ services:
         value: BAAI/bge-small-en-v1.5
       - key: OPERAIQ_API_TOKEN
         generateValue: true
+      - key: OPERAIQ_WEBHOOK_SECRET
+        generateValue: true
       - key: ALLOW_UNAUTHENTICATED_WRITES
         value: "false"
       - key: ALLOW_COLLECTION_RESET

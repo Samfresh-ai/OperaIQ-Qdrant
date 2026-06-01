@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ app_name }}</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=sentinel-flow" />
   </head>
   <body>
     <div class="app-shell">
@@ -19,24 +19,28 @@
       <div class="layout">
         <aside class="sidebar">
           <nav class="nav-list" aria-label="OperaIQ sections">
-            <a class="nav-link active" href="#memory">Memory</a>
+            <a class="nav-link active" href="#incidents">Incidents</a>
+            <a class="nav-link" href="#memory">Memory</a>
+            <a class="nav-link" href="#qdrant">Qdrant</a>
+            <a class="nav-link" href="#services">Services</a>
+            <a class="nav-link" href="#proof">Proof</a>
             <a class="nav-link" href="/runtime/readiness">Readiness</a>
           </nav>
           <div class="status-stack" aria-label="Runtime status">
             <div class="status-title">Status</div>
             <div class="status-dot-row"><span id="qdrantDot" class="status-dot live"></span>Qdrant</div>
             <div class="status-dot-row"><span id="indexDot" class="status-dot live"></span>Index</div>
-            <div class="status-dot-row"><span id="writeDot" class="status-dot live"></span>Writes</div>
+            <div class="status-dot-row"><span id="writeDot" class="status-dot live"></span>Agent</div>
           </div>
         </aside>
 
         <main class="main-content">
-          <section class="page-head" id="memory">
+          <section class="page-head" id="incidents">
             <div>
-              <h1>Memory</h1>
-              <p>Qdrant recall, tenant isolation, and resolution write-back.</p>
+              <h1>Incidents</h1>
+              <p>Newest source events, agent status, and Qdrant memory.</p>
             </div>
-            <div class="poll-label">Mode: <span id="qdrantMode">{{ qdrant_mode }}</span></div>
+            <div class="poll-label">poll: readiness · <span id="qdrantMode">{{ qdrant_mode }}</span></div>
           </section>
 
           <section class="runtime-gate" aria-label="Runtime gate">
@@ -44,39 +48,138 @@
               <div class="section-label">Runtime gate</div>
               <div id="runtimeState" class="gate-copy">Checking production readiness</div>
             </div>
-            <div id="runtimeDetail" class="gate-detail">Production · Qdrant server · Live recall path</div>
+            <div id="runtimeDetail" class="gate-detail">Production · Qdrant server · Signed source intake</div>
           </section>
 
-          <section class="memory-panel">
-            <div class="panel-caption">OperaIQ memory</div>
-            <div class="memory-summary">
-              <span class="accent-value" id="pointCount">--</span> points ·
-              <span id="collectionName">{{ collection }}</span> ·
-              <span id="indexSummary">checking indexes</span>
+          <section class="webhook-strip" id="services">
+            <div class="webhook-copy">
+              <div class="section-label">Source webhook</div>
+              <h2>Alert intake URL for Qdrant-backed response</h2>
+              <p>Generate a fresh signed URL. Put it in the source app. Failure events go straight to OperaIQ.</p>
+              <code id="webhookUrl">Generate a signed URL for this org/project.</code>
+              <div class="webhook-meta">
+                <span id="webhookAuth">signed-url</span>
+                <span id="webhookPath">waiting for generated route</span>
+              </div>
             </div>
-            <div class="segment-bar" aria-hidden="true">
-              <span></span><span></span><span></span><span></span><span></span>
-              <span></span><span></span><span></span><span></span><span></span>
-              <span></span><span></span><span></span><span></span><span></span>
-              <span></span><span></span><span></span><span class="dim"></span><span class="dim"></span>
+            <div class="webhook-actions">
+              <button class="primary-button" id="generate-webhook" type="button">Generate fresh URL</button>
+              <button class="secondary-button" id="copy-webhook" type="button">Copy URL</button>
             </div>
           </section>
 
-          <section class="workbench">
-            <aside class="panel intake" id="alert">
+          <section class="dashboard-grid">
+            <section class="incident-feed panel">
               <div class="panel-title">
-                <span>Alert intake</span>
-                <div class="actions">
-                  <button class="primary-button" id="resolve-alert" type="button">Resolve</button>
+                <span>Incident Feed</span>
+                <small id="status">waiting</small>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th class="sev-col">Sev</th>
+                      <th>Title</th>
+                      <th class="svc-col">Service</th>
+                      <th class="state-col">Status</th>
+                      <th class="time-col right">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><span class="severity-chip" id="severityChip">{{ default_alert.severity }}</span></td>
+                      <td>
+                        <div class="incident-title" id="incidentTitle">{{ default_alert.title }}</div>
+                        <div class="incident-subtitle" id="webhookEvent">Waiting for a source app event.</div>
+                      </td>
+                      <td id="serviceCell">{{ default_alert.service }}</td>
+                      <td><span class="state-chip" id="incidentState">waiting</span></td>
+                      <td class="right" id="incidentTime">now</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="reasoning-panel panel">
+              <div class="panel-title">
+                <span>Agent Reasoning Panel</span>
+                <small id="agentMode">stored trace</small>
+              </div>
+              <div class="agent-active-indicator" aria-hidden="true"></div>
+              <div class="reasoning-steps">
+                <div class="reasoning-step">
+                  <div class="step-label receive">[RECEIVE]</div>
+                  <p id="narrative">Waiting for signed source delivery.</p>
+                </div>
+                <div class="reasoning-step">
+                  <div class="step-label recall">[RECALL]</div>
+                  <p id="incident">No incident recalled yet.</p>
+                </div>
+                <div class="reasoning-step">
+                  <div class="step-label act">[ACT]</div>
+                  <p id="actionNarrative">No action selected yet.</p>
+                </div>
+                <div class="reasoning-step">
+                  <div class="step-label verify">[VERIFY]</div>
+                  <p id="verification">No verification run yet.</p>
+                </div>
+                <div class="reasoning-step">
+                  <div class="step-label learn">[LEARN]</div>
+                  <p id="learned">No write-back yet.</p>
                 </div>
               </div>
+            </section>
+          </section>
+
+          <section class="ops-grid" id="memory">
+            <section class="memory-panel panel">
+              <div class="panel-title">
+                <span>OperaIQ Memory</span>
+                <small id="collectionName">{{ collection }}</small>
+              </div>
+              <div class="memory-summary">
+                <span class="accent-value" id="pointCount">--</span> points ·
+                <span id="indexSummary">checking payload indexes</span>
+              </div>
+              <div class="segment-bar" aria-hidden="true">
+                <span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span class="dim"></span><span class="dim"></span>
+              </div>
+            </section>
+
+            <section class="metrics-row panel" id="qdrant">
+              <div class="metric-box">
+                <span>Similarity</span>
+                <strong id="similarity">--</strong>
+              </div>
+              <div class="metric-box">
+                <span>Action</span>
+                <strong id="action">--</strong>
+              </div>
+              <div class="metric-box">
+                <span>Tenant points</span>
+                <strong id="points">--</strong>
+              </div>
+            </section>
+          </section>
+
+          <details class="operator-fallback panel">
+            <summary>Operator fallback alert</summary>
+            <div class="fallback-grid">
               <label>
                 Operator token
-                <input id="apiToken" autocomplete="off" placeholder="Only needed when production writes are locked" />
+                <input id="apiToken" autocomplete="off" placeholder="Required for production write paths" />
               </label>
               <label>
                 Org
                 <input id="orgId" value="{{ default_alert.orgId }}" />
+              </label>
+              <label>
+                Project
+                <input id="project" value="checkout-flow" />
               </label>
               <label>
                 Service
@@ -90,52 +193,26 @@
                   <option value="sev3">sev3</option>
                 </select>
               </label>
-              <label>
+              <label class="wide-field">
                 Alert title
                 <input id="title" value="{{ default_alert.title }}" />
               </label>
-              <label>
+              <label class="wide-field">
                 Raw signal
-                <textarea id="message" rows="9">{{ default_alert.message }}</textarea>
+                <textarea id="message" rows="6">{{ default_alert.message }}</textarea>
               </label>
-            </aside>
+              <div class="fallback-actions">
+                <button class="primary-button" id="resolve-alert" type="button">Resolve alert</button>
+              </div>
+            </div>
+          </details>
 
-            <section class="panel result">
-              <div class="panel-title">
-                <span>Qdrant recall</span>
-                <small id="status">waiting</small>
-              </div>
-              <div id="narrative" class="narrative">
-                App logs enter Qdrant, the watcher finds a pattern, OperaIQ acts, and the learned incident writes back.
-              </div>
-              <div class="result-grid">
-                <div>
-                  <span class="label">Similarity</span>
-                  <strong id="similarity">--</strong>
-                </div>
-                <div>
-                  <span class="label">Action</span>
-                  <strong id="action">--</strong>
-                </div>
-                <div>
-                  <span class="label">Tenant points</span>
-                  <strong id="points">--</strong>
-                </div>
-              </div>
-              <div class="evidence">
-                <h2>Recalled incident</h2>
-                <p id="incident">No incident recalled yet.</p>
-                <h2>Verification</h2>
-                <p id="verification">No verification run yet.</p>
-                <h2>Learned memory</h2>
-                <p id="learned">No write-back yet.</p>
-              </div>
-            </section>
-          </section>
-
-          <section class="proof-panel" id="proof">
-            <div class="proof-title">Recall proof</div>
-            <div class="proof-table-wrap">
+          <section class="proof-panel panel" id="proof">
+            <div class="panel-title">
+              <span>Recall Proof</span>
+              <small id="webhookResult">No autonomous response has run yet.</small>
+            </div>
+            <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
@@ -152,7 +229,7 @@
                   </tr>
                   <tr>
                     <td>Payload indexes</td>
-                    <td id="payloadIndexEvidence">createdAt, orgId, resolved, service, severity</td>
+                    <td id="payloadIndexEvidence">createdAt, kind, orgId, project, resolved, service, severity</td>
                     <td class="right" id="indexState">checking</td>
                   </tr>
                   <tr>
@@ -168,6 +245,6 @@
       </div>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=sentinel-flow"></script>
   </body>
 </html>

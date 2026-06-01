@@ -146,6 +146,10 @@ class IncidentMemoryService:
                 if "already exists" not in str(exc).lower():
                     raise
 
+    def reconcile_payload_indexes(self) -> None:
+        if self.client.collection_exists(collection_name=self.collection):
+            self.create_payload_indexes()
+
     def recall(self, alert: SplunkAlert, limit: int = 3) -> list[RecallMatch]:
         if not self.client.collection_exists(collection_name=self.collection):
             raise LookupError(f"Qdrant collection {self.collection} does not exist")
@@ -161,11 +165,14 @@ class IncidentMemoryService:
         return [match_from_point(point) for point in result.points]
 
     def resolve_alert(self, alert: SplunkAlert) -> ResolutionResult:
-        matches = self.recall(alert, limit=3)
+        matches = self.recall(alert, limit=6)
         if not matches:
             raise LookupError(f"No resolved memory found for orgId={alert.orgId}")
 
-        match = matches[0]
+        match = next(
+            (candidate for candidate in matches if not candidate.incidentId.startswith("learned-")),
+            matches[0],
+        )
         verification = verify_action(alert, match.actionTaken)
         learned = learned_memory_from_alert(alert, match, verification)
         vector = self.embedder.embed([memory_to_text(learned)])[0]
@@ -203,13 +210,20 @@ class IncidentMemoryService:
         )
         return int(result.count)
 
-    def collection_report(self, org_id: str | None = None) -> QdrantCollectionReport:
+    def collection_report(
+        self,
+        org_id: str | None = None,
+        *,
+        reconcile_indexes: bool = True,
+    ) -> QdrantCollectionReport:
         exists = self.client.collection_exists(collection_name=self.collection)
         indexed_fields: list[str] = []
         tenant_point_count: int | None = None
         vector_size: int | None = None
 
         if exists:
+            if reconcile_indexes:
+                self.reconcile_payload_indexes()
             info = self.client.get_collection(collection_name=self.collection)
             schema = getattr(info, "payload_schema", {}) or {}
             indexed_fields = sorted(str(field) for field in schema.keys())

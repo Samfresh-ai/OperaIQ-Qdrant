@@ -5,6 +5,7 @@ from app.embedder import FastEmbedEmbedder
 from app.memory_service import IncidentMemoryService
 from app.models import AppLogEvent
 from app.seed import DEFAULT_ALERT, SEED_INCIDENTS
+from app.webhooks import webhook_path, webhook_secret
 
 
 def main() -> None:
@@ -34,13 +35,15 @@ def main() -> None:
         project=args.project,
     )
 
-    print("Your app -> Qdrant app-log memory -> watcher webhook -> OperaIQ -> Qdrant learned memory")
+    inbound_path = webhook_path(DEFAULT_ALERT.orgId, args.project, webhook_secret(settings))
+
+    print("Your app -> signed OperaIQ webhook -> Qdrant memory -> autonomous response -> learned memory")
     print(f"app={settings.app_name}")
     print(f"qdrant_mode={settings.qdrant_mode}")
     print(f"project={args.project}")
     print(f"logged_event={event_ids[0]}")
     print(f"watcher_pattern={payload['service']} {payload['severity']}")
-    print("webhook_path=/api/webhooks/pattern-alert")
+    print(f"webhook_path={inbound_path}")
     print(f"webhook_alert={alert.alertId}")
     print(f"recalled_incident={result.match.incidentId}")
     print(f"similarity={result.match.similarityPercent}%")

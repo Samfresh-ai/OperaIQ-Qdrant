@@ -37,7 +37,11 @@ class Settings:
     embedding_model: str = field(
         default_factory=lambda: env_str("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
     )
+    operaiq_public_url: str | None = field(default_factory=lambda: env_optional("OPERAIQ_PUBLIC_URL"))
     operaiq_api_token: str | None = field(default_factory=lambda: env_optional("OPERAIQ_API_TOKEN"))
+    operaiq_webhook_secret: str | None = field(
+        default_factory=lambda: env_optional("OPERAIQ_WEBHOOK_SECRET")
+    )
     allow_unauthenticated_writes: bool = field(
         default_factory=lambda: env_bool(
             "ALLOW_UNAUTHENTICATED_WRITES",
@@ -71,6 +75,8 @@ class Settings:
             issues.append("production cannot use QDRANT_URL=:memory:")
         if not self.operaiq_api_token and not self.allow_unauthenticated_writes:
             issues.append("production write paths require OPERAIQ_API_TOKEN")
+        if not self.operaiq_webhook_secret:
+            issues.append("production webhook URLs require OPERAIQ_WEBHOOK_SECRET")
         return issues
 
     def production_warnings(self) -> list[str]:

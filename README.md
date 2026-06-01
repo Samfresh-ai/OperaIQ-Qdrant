@@ -1,42 +1,46 @@
 # OperaIQ
 
-**Incident memory for ops agents, backed by Qdrant.**
+**Autonomous incident response powered by Qdrant memory.**
 
-> *The incident brain that remembers what worked.*
+OperaIQ is an incident response agent, not a standalone search page and not only a memory store. It gives production apps a signed webhook URL. When a source system sends a failure event, OperaIQ stores the signal in Qdrant, recalls the closest resolved incident for that tenant, chooses the action that worked before, verifies the signal changed, and writes the new resolved incident back into Qdrant.
 
-OperaIQ sits after your observability stack. When an app failure pattern appears, it stores the raw signal in Qdrant, recalls similar resolved incidents with tenant-filtered vector search, chooses the action that worked before, verifies the signal changed, and writes the newly resolved incident back into Qdrant.
-
-The point is simple: the next similar failure should not start from zero.
+Qdrant is the memory layer. OperaIQ is the response loop around it.
 
 ---
 
-## The Flow
+## Production Flow
 
 ```text
-Your app
-  -> app failure logs stored in Qdrant as unresolved signal memory
-  -> OperaIQ watcher scans Qdrant for unresolved patterns
-  -> watcher fires /api/webhooks/pattern-alert
-  -> OperaIQ recalls the closest resolved incident for that org
-  -> OperaIQ verifies the action signal
-  -> resolved incident writes back into Qdrant
-  -> the next matching incident resolves with better memory
+Your app / observability source
+  -> POST signed OperaIQ webhook URL
+  -> OperaIQ stores the source event as unresolved Qdrant signal memory
+  -> OperaIQ recalls resolved incidents with orgId-filtered vector search
+  -> OperaIQ selects the prior action that worked
+  -> OperaIQ verifies the response signal
+  -> OperaIQ writes the learned incident back into Qdrant
+  -> the next matching incident starts with stronger memory
 ```
 
-Qdrant is the memory and recall layer. OperaIQ owns the watcher/webhook step because Qdrant does not run arbitrary remediation code by itself.
+The dashboard exposes this flow directly:
+
+- Generate a signed webhook URL for an org/project.
+- Copy that URL into the source app or observability system.
+- Send a source event through the generated URL.
+- Use `Resolve alert` only as the operator fallback for a known alert payload.
+- Check readiness, payload indexes, tenant isolation, verification, and learned write-back.
 
 ---
 
-## Why It Learns
+## Why Qdrant Matters
 
 Every resolved incident becomes a Qdrant point with a vector and structured payload:
 
-- `orgId`, `service`, `severity`, `resolved`, `createdAt`
+- `orgId`, `project`, `service`, `severity`, `resolved`, `createdAt`
 - symptoms and root cause
 - resolution and action taken
 - verification result from the latest incident
 
-Before acting on a new alert, OperaIQ filters by `orgId` and `resolved=true`, then searches for the closest proven fix. After the incident is handled, the new resolution is written back as another point. That is the learning loop.
+Before OperaIQ responds to a new event, it filters by `orgId` and `resolved=true`, then searches for the closest proven fix. After handling the incident, it writes the new outcome back as another resolved memory. That is the learning loop.
 
 ---
 
@@ -65,21 +69,25 @@ Do not use in-memory Qdrant for production. `/runtime/readiness` reports unsafe 
 
 ## Production Controls
 
+- `/api/integrations/webhook` generates a signed per-org/project webhook URL.
+- `/api/webhooks/{orgId}/{project}/{signature}` accepts source events without exposing the operator token.
+- `OPERAIQ_WEBHOOK_SECRET` signs generated webhook URLs and rotates them when changed.
+- `OPERAIQ_API_TOKEN` protects operator/admin write paths.
 - `/health` reports app state, Qdrant mode, collection status, payload indexes, vector size, and tenant point count.
 - `/runtime/readiness` reports production blockers and warnings.
-- Normal write paths require `OPERAIQ_API_TOKEN` in production.
 - `ALLOW_UNAUTHENTICATED_WRITES=false` is the production default.
 - `ALLOW_COLLECTION_RESET=false` prevents public collection resets.
-- There is no browser demo endpoint. Local demo/proof runs through the CLI or proof script.
 
 Required environment:
 
 ```env
 APP_ENV=production
+OPERAIQ_PUBLIC_URL=https://<operaiq-host>
 QDRANT_URL=https://<qdrant-host>
 QDRANT_API_KEY=<secret>
 QDRANT_COLLECTION=incident_memories
 OPERAIQ_API_TOKEN=<secret>
+OPERAIQ_WEBHOOK_SECRET=<secret>
 ALLOW_UNAUTHENTICATED_WRITES=false
 ALLOW_COLLECTION_RESET=false
 ```
@@ -105,7 +113,7 @@ For Qdrant server mode:
 docker compose up -d
 ```
 
-The CLI path proves the full learning loop without a browser reset button:
+The CLI path proves the learning loop without relying on browser-only state:
 
 ```bash
 uv run python -m app.cli --project local-checkout-flow
@@ -114,9 +122,8 @@ uv run python -m app.cli --project local-checkout-flow
 Expected shape:
 
 ```text
-Your app -> Qdrant app-log memory -> watcher webhook -> OperaIQ -> Qdrant learned memory
-logged_event=...
-webhook_path=/api/webhooks/pattern-alert
+Your app -> signed OperaIQ webhook -> Qdrant memory -> autonomous response -> learned memory
+webhook_path=/api/webhooks/acme-payments/local-checkout-flow/<signature>
 recalled_incident=inc-redis-econnreset-2026-05-21
 recommended_action=rotate_connection_pool
 learned_incident=...
@@ -128,11 +135,12 @@ learned_incident=...
 
 | Route | Purpose |
 |---|---|
+| `POST /api/integrations/webhook` | Generates a signed webhook URL for an org/project. |
+| `POST /api/webhooks/{orgId}/{project}/{signature}` | Receives source events, recalls memory, verifies response, and writes learned memory. |
+| `POST /api/alerts/resolve` | Operator fallback for resolving an existing alert payload. |
 | `POST /api/seed?reset=false` | Idempotently creates baseline resolved memory. Reset is blocked unless explicitly enabled. |
-| `POST /api/app/logs` | Stores app failure logs in Qdrant as unresolved signal memory. |
-| `POST /api/qdrant/watch` | Finds unresolved Qdrant signal memory and fires the pattern webhook path. |
-| `POST /api/webhooks/pattern-alert` | Resolves a pattern alert and writes learned memory back to Qdrant. |
-| `POST /api/alerts/resolve` | Direct resolve path for an existing alert payload. |
+| `POST /api/app/logs` | Internal/source-log intake for unresolved signal memory. |
+| `POST /api/qdrant/watch` | Internal watcher path for unresolved Qdrant signal memory. |
 | `GET /health` | Deploy health. |
 | `GET /runtime/readiness` | Production truth check. |
 
@@ -145,11 +153,24 @@ uv run ruff check .
 uv run python -m pytest
 uv run python -m compileall app scripts tests
 docker compose config
-QDRANT_API_KEY=dummy OPERAIQ_API_TOKEN=dummy docker compose --env-file .env.aws.example -f docker-compose.aws.yml config
+QDRANT_API_KEY="$(openssl rand -hex 24)" \
+OPERAIQ_API_TOKEN="$(openssl rand -hex 24)" \
+OPERAIQ_WEBHOOK_SECRET="$(openssl rand -hex 24)" \
+docker compose --env-file .env.aws.example -f docker-compose.aws.yml config >/tmp/operaiq-aws-compose.yml
 uv run python scripts/operaiq_human_flow.py --base-url http://127.0.0.1:8097
 ```
 
-The proof script checks UI load, seed without reset, readiness, app-log ingestion, Qdrant watcher, webhook firing, Acme recall/write-back, and Globex tenant isolation. Artifacts are written under `artifacts/proof/` and ignored by Git.
+The proof script checks UI load, seed without reset, readiness, signed webhook generation, source webhook delivery, Qdrant recall/write-back, and Globex tenant isolation. Artifacts are written under `artifacts/proof/` and ignored by Git.
+
+For a source-app proof, run a failing checkout app against the hosted OperaIQ URL:
+
+```bash
+OPERAIQ_BASE_URL=https://operaiq.onrender.com \
+OPERAIQ_API_TOKEN=<operator token> \
+uv run python scripts/prove_failing_app_flow.py --operaiq-base-url https://operaiq.onrender.com
+```
+
+That script starts the checkout source app, lets `/checkout` return a real `503`, sends the source event through the signed OperaIQ webhook, and verifies Qdrant recall, action selection, verification, and learned-memory write-back.
 
 ---
 
@@ -165,11 +186,12 @@ The proof script checks UI load, seed without reset, readiness, app-log ingestio
 
 | Component | State |
 |---|---|
+| Autonomous source webhook | Implemented with signed per-org/project URLs |
 | Qdrant server mode | Verified locally with official Qdrant server |
 | Tenant-filtered recall | Verified |
 | Payload indexes | Verified in server mode |
-| App-log ingestion | Implemented |
-| Qdrant watcher + webhook path | Implemented in OperaIQ |
+| Source event intake | Implemented |
+| Operator fallback resolve | Implemented |
 | Learned memory write-back | Verified |
 | Render deployment config | Implemented |
 | Hosted Qdrant credentials | Not committed; set in deploy environment |

@@ -4,7 +4,7 @@ from app.config import Settings
 from app.embedder import KeywordEmbedder
 import app.main as main
 from app.memory_service import IncidentMemoryService
-from app.models import AppLogEvent
+from app.models import AppLogEvent, WebhookIntegrationRequest
 from app.seed import DEFAULT_ALERT
 
 
@@ -103,8 +103,80 @@ def test_app_log_watch_flow_fires_webhook_and_writes_learned_memory(monkeypatch)
     )
     assert watch.status_code == 200
     result = watch.json()
-    assert result["webhookFired"] is True
-    assert result["webhookPath"] == "/api/webhooks/pattern-alert"
+    assert result["webhookAccepted"] is True
+    assert result["webhookPath"].startswith(
+        f"/api/webhooks/{DEFAULT_ALERT.orgId}/new-checkout-project/"
+    )
+    assert result["resolution"]["match"]["incidentId"] == "inc-redis-econnreset-2026-05-21"
+    assert result["resolution"]["recommendation"] == "rotate_connection_pool"
+    assert result["resolution"]["tenantPointCount"] == 10
+
+
+def test_generated_signed_webhook_accepts_source_event_and_writes_memory(monkeypatch) -> None:
+    service = IncidentMemoryService(
+        settings=Settings(
+            app_env="production",
+            qdrant_url=":memory:",
+            operaiq_api_token="secret-token",
+            operaiq_webhook_secret="webhook-secret",
+            allow_unauthenticated_writes=False,
+        ),
+        embedder=KeywordEmbedder(),
+    )
+
+    monkeypatch.setattr(main, "get_settings", lambda: service.settings)
+    monkeypatch.setattr(main, "get_memory_service", lambda: service)
+    client = TestClient(main.app)
+    headers = {"Authorization": "Bearer secret-token"}
+
+    seed_response = client.post("/api/seed?reset=false", headers=headers)
+    assert seed_response.status_code == 200
+    assert seed_response.json()["tenantPointCount"] == 8
+
+    integration_request = WebhookIntegrationRequest(
+        orgId=DEFAULT_ALERT.orgId,
+        project="checkout-production",
+    )
+    integration = client.post(
+        "/api/integrations/webhook",
+        json=integration_request.model_dump(mode="json"),
+        headers=headers,
+    )
+    assert integration.status_code == 200
+    integration_json = integration.json()
+    assert integration_json["authMode"] == "signed-url"
+    assert integration_json["webhookPath"].startswith(
+        f"/api/webhooks/{DEFAULT_ALERT.orgId}/checkout-production/"
+    )
+
+    bad_signature = client.post(
+        f"/api/webhooks/{DEFAULT_ALERT.orgId}/checkout-production/bad-signature",
+        json={
+            "eventId": "unit-webhook-bad",
+            "service": DEFAULT_ALERT.service,
+            "severity": DEFAULT_ALERT.severity,
+            "message": DEFAULT_ALERT.message,
+            "errorCount": DEFAULT_ALERT.errorCount,
+            "p95LatencyMs": DEFAULT_ALERT.p95LatencyMs,
+        },
+    )
+    assert bad_signature.status_code == 401
+
+    accepted = client.post(
+        integration_json["webhookPath"],
+        json={
+            "eventId": "unit-webhook-redis",
+            "service": DEFAULT_ALERT.service,
+            "severity": DEFAULT_ALERT.severity,
+            "message": DEFAULT_ALERT.message,
+            "errorCount": DEFAULT_ALERT.errorCount,
+            "p95LatencyMs": DEFAULT_ALERT.p95LatencyMs,
+        },
+    )
+    assert accepted.status_code == 200
+    result = accepted.json()
+    assert result["webhookAccepted"] is True
+    assert result["sourceEventId"] == "unit-webhook-redis"
     assert result["resolution"]["match"]["incidentId"] == "inc-redis-econnreset-2026-05-21"
     assert result["resolution"]["recommendation"] == "rotate_connection_pool"
     assert result["resolution"]["tenantPointCount"] == 10
@@ -172,6 +244,12 @@ def test_production_write_paths_require_token(monkeypatch) -> None:
 
     blocked = client.post("/api/seed?reset=false")
     assert blocked.status_code == 401
+
+    blocked_generation = client.post(
+        "/api/integrations/webhook",
+        json={"orgId": DEFAULT_ALERT.orgId, "project": "checkout-flow"},
+    )
+    assert blocked_generation.status_code == 401
 
     allowed = client.post(
         "/api/seed?reset=false",

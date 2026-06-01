@@ -10,23 +10,26 @@ Render hosts the OperaIQ app. Qdrant should live outside the Render web containe
 - Readiness path: `/runtime/readiness`.
 - Vector store: Qdrant Cloud or hosted Qdrant server.
 - Write protection: `OPERAIQ_API_TOKEN` on every production write path.
+- Inbound incident source: signed webhook URLs generated with `OPERAIQ_WEBHOOK_SECRET`.
 
 ## Required Variables
 
 ```text
 APP_NAME=OperaIQ
 APP_ENV=production
+OPERAIQ_PUBLIC_URL=https://<operaiq-render-url>
 QDRANT_URL=https://<cluster>.<region>.<provider>.cloud.qdrant.io
 QDRANT_API_KEY=<secret>
 QDRANT_COLLECTION=incident_memories
 EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
 OPERAIQ_API_TOKEN=<generated secret>
+OPERAIQ_WEBHOOK_SECRET=<generated secret>
 ALLOW_UNAUTHENTICATED_WRITES=false
 ALLOW_COLLECTION_RESET=false
 PROOF_ARTIFACTS_DIR=artifacts/proof
 ```
 
-`render.yaml` prompts for `QDRANT_URL` and `QDRANT_API_KEY`, generates `OPERAIQ_API_TOKEN`, sets `/health` as the HTTP health check, and uses Render's free web instance so the service can be created without adding billing details.
+`render.yaml` prompts for `QDRANT_URL` and `QDRANT_API_KEY`, generates `OPERAIQ_API_TOKEN` and `OPERAIQ_WEBHOOK_SECRET`, sets `/health` as the HTTP health check, and uses Render's free web instance so the service can be created without adding billing details.
 
 ## Qdrant Cloud Target
 
@@ -59,7 +62,7 @@ uv run python scripts/operaiq_human_flow.py --base-url https://<operaiq-render-u
 Required flow:
 
 ```text
-UI loads -> seed without reset -> app logs stored in Qdrant -> watcher fires webhook -> OperaIQ resolves -> learned memory writes back -> Globex tenant recall stays isolated
+UI loads -> signed webhook URL generated -> source event accepted -> Qdrant recall runs -> OperaIQ responds -> learned memory writes back -> Globex tenant recall stays isolated
 ```
 
 ## Monitoring

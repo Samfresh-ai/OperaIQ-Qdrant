@@ -8,9 +8,11 @@ services:
       APP_NAME: OperaIQ
       APP_ENV: production
       PORT: "8097"
+      OPERAIQ_PUBLIC_URL: http://127.0.0.1:8097
       QDRANT_URL: http://qdrant:6333
       QDRANT_COLLECTION: incident_memories
       OPERAIQ_API_TOKEN: local-compose-token
+      OPERAIQ_WEBHOOK_SECRET: local-compose-webhook-secret
       ALLOW_UNAUTHENTICATED_WRITES: "false"
       ALLOW_COLLECTION_RESET: "false"
     ports:

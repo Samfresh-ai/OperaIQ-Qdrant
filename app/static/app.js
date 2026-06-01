@@ -2,11 +2,14 @@ const statusEl = document.querySelector("#status");
 const narrativeEl = document.querySelector("#narrative");
 const similarityEl = document.querySelector("#similarity");
 const actionEl = document.querySelector("#action");
+const actionNarrativeEl = document.querySelector("#actionNarrative");
 const pointsEl = document.querySelector("#points");
 const incidentEl = document.querySelector("#incident");
 const verificationEl = document.querySelector("#verification");
 const learnedEl = document.querySelector("#learned");
 const resolveButton = document.querySelector("#resolve-alert");
+const generateWebhookButton = document.querySelector("#generate-webhook");
+const copyWebhookButton = document.querySelector("#copy-webhook");
 const apiTokenInput = document.querySelector("#apiToken");
 const runtimeGateEl = document.querySelector(".runtime-gate");
 const runtimeStateEl = document.querySelector("#runtimeState");
@@ -23,19 +26,38 @@ const tenantStateEl = document.querySelector("#tenantState");
 const indexStateEl = document.querySelector("#indexState");
 const writeStateEl = document.querySelector("#writeState");
 const payloadIndexEvidenceEl = document.querySelector("#payloadIndexEvidence");
-let seedPromise = null;
+const webhookUrlEl = document.querySelector("#webhookUrl");
+const webhookAuthEl = document.querySelector("#webhookAuth");
+const webhookEventEl = document.querySelector("#webhookEvent");
+const webhookPathEl = document.querySelector("#webhookPath");
+const webhookResultEl = document.querySelector("#webhookResult");
+const incidentTitleEl = document.querySelector("#incidentTitle");
+const incidentStateEl = document.querySelector("#incidentState");
+const incidentTimeEl = document.querySelector("#incidentTime");
+const serviceCellEl = document.querySelector("#serviceCell");
+const agentModeEl = document.querySelector("#agentMode");
+const severityChipEl = document.querySelector("#severityChip");
 let memoryPrepared = false;
+let activeWebhookIntegration = null;
+const expectedPayloadIndexes = "createdAt, kind, orgId, project, resolved, service, severity";
 
 function alertPayload() {
   return {
     orgId: document.querySelector("#orgId").value,
-    alertId: `manual-${Date.now()}`,
+    alertId: `operator-${Date.now()}`,
     service: document.querySelector("#service").value,
     severity: document.querySelector("#severity").value,
     title: document.querySelector("#title").value,
     message: document.querySelector("#message").value,
     errorCount: 327,
     p95LatencyMs: 5120,
+  };
+}
+
+function integrationPayload() {
+  return {
+    orgId: document.querySelector("#orgId").value,
+    project: document.querySelector("#project").value,
   };
 }
 
@@ -48,11 +70,20 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function setIncidentState(state) {
+  incidentStateEl.textContent = state;
+  const className = state === "resolved" ? "resolved" : state === "failed" ? "failed" : "in-progress";
+  incidentStateEl.className = `state-chip ${className}`;
+  incidentTimeEl.textContent = "now";
+}
+
 function renderResult(result) {
   statusEl.textContent = "resolved";
+  agentModeEl.textContent = "stored trace";
   narrativeEl.textContent = result.narrative;
   similarityEl.textContent = `${result.match.similarityPercent}%`;
   actionEl.innerHTML = escapeHtml(result.recommendation).replaceAll("_", "_<wbr>");
+  actionNarrativeEl.textContent = result.recommendation;
   pointsEl.textContent = result.tenantPointCount;
   pointCountEl.textContent = result.tenantPointCount;
   topBrainCountEl.textContent = result.tenantPointCount;
@@ -63,12 +94,27 @@ function renderResult(result) {
   tenantStateEl.textContent = "passed";
   writeStateEl.textContent = "written";
   writeDotEl.className = "status-dot live";
+  incidentTitleEl.textContent = result.alert.title;
+  serviceCellEl.textContent = result.alert.service;
+  severityChipEl.textContent = result.alert.severity;
+  webhookEventEl.textContent = `${result.alert.alertId} resolved by OperaIQ.`;
+  setIncidentState("resolved");
+}
+
+function renderWebhookIntegration(integration) {
+  activeWebhookIntegration = integration;
+  webhookUrlEl.textContent = integration.webhookUrl;
+  webhookAuthEl.textContent = `${integration.authMode} · ${integration.deliveryMethod}`;
+  webhookPathEl.textContent = integration.webhookPath;
+  webhookResultEl.textContent = "Webhook URL ready for the selected org/project.";
 }
 
 function renderError(error) {
   statusEl.textContent = "error";
   narrativeEl.textContent = error.message || "Request failed.";
+  webhookResultEl.textContent = error.message || "Request failed.";
   writeDotEl.className = "status-dot";
+  setIncidentState("failed");
 }
 
 function authHeaders() {
@@ -88,20 +134,30 @@ async function postJson(url, body = null) {
   });
   if (!response.ok) {
     const bodyText = await response.text();
-    throw new Error(bodyText);
+    let message = bodyText;
+    try {
+      const parsed = JSON.parse(bodyText);
+      message = parsed.detail || bodyText;
+    } catch {
+      message = bodyText;
+    }
+    throw new Error(message);
   }
   return response.json();
 }
 
 function setBusy(busy) {
   resolveButton.disabled = busy;
+  generateWebhookButton.disabled = busy;
+  copyWebhookButton.disabled = busy;
 }
 
 function renderReadiness(readiness) {
   const qdrant = readiness.qdrant || {};
   const indexes = qdrant.indexedFields || [];
   const missingIndexes = qdrant.missingIndexes || [];
-  const warning = (readiness.warnings || [])[0] || "Live recall path";
+  const localIndexProofUnavailable = qdrant.mode !== "server" && missingIndexes.length > 0;
+  const warning = (readiness.warnings || [])[0] || "signed source intake";
   const warningSummary = warning.includes("local Qdrant mode")
     ? "local mode: index proof unavailable"
     : warning;
@@ -109,20 +165,34 @@ function renderReadiness(readiness) {
   qdrantModeEl.textContent = qdrant.mode || qdrantModeEl.textContent;
   pointCountEl.textContent = typeof qdrant.tenantPointCount === "number" ? qdrant.tenantPointCount : "--";
   topBrainCountEl.textContent = typeof qdrant.tenantPointCount === "number" ? qdrant.tenantPointCount : "--";
-  indexSummaryEl.textContent = indexes.length ? `${indexes.length} payload indexes` : "no payload indexes reported";
-  payloadIndexEvidenceEl.textContent = indexes.length ? indexes.join(", ") : "createdAt, orgId, resolved, service, severity";
+  indexSummaryEl.textContent = localIndexProofUnavailable
+    ? "local index proof unavailable"
+    : indexes.length
+      ? `${indexes.length} payload indexes`
+      : "no payload indexes reported";
+  payloadIndexEvidenceEl.textContent = indexes.length ? indexes.join(", ") : expectedPayloadIndexes;
 
   runtimeGateEl.classList.remove("blocked", "warn");
   if (!readiness.ready) {
     runtimeGateEl.classList.add("blocked");
+  } else if ((readiness.warnings || []).length) {
+    runtimeGateEl.classList.add("warn");
   }
 
-  runtimeStateEl.textContent = readiness.ready ? "Production ready" : readiness.issues?.[0] || "Production blocked";
+  runtimeStateEl.textContent = readiness.ready
+    ? readiness.production
+      ? "Production ready"
+      : "Runtime ready"
+    : readiness.issues?.[0] || "Production blocked";
   runtimeDetailEl.textContent = `${readiness.production ? "Production" : "Non-production"} · ${qdrant.mode || "Qdrant"} · ${warningSummary}`;
 
   qdrantDotEl.className = qdrant.exists === false ? "status-dot" : "status-dot live";
   indexDotEl.className = missingIndexes.length ? "status-dot warn" : "status-dot live";
-  indexStateEl.textContent = missingIndexes.length ? `missing ${missingIndexes.join(", ")}` : "ready";
+  indexStateEl.textContent = localIndexProofUnavailable
+    ? "local proof unavailable"
+    : missingIndexes.length
+      ? `missing ${missingIndexes.join(", ")}`
+      : "ready";
 }
 
 async function loadReadiness() {
@@ -143,33 +213,6 @@ async function loadReadiness() {
   }
 }
 
-async function seedMemoryOnce() {
-  if (!seedPromise) {
-    statusEl.textContent = "preparing";
-    narrativeEl.textContent =
-      "Preparing baseline incident memory once. Resolve actions will not reset the collection.";
-    seedPromise = postJson("/api/seed?reset=false")
-      .then((seedResult) => {
-        memoryPrepared = true;
-        pointCountEl.textContent = seedResult.tenantPointCount;
-        topBrainCountEl.textContent = seedResult.tenantPointCount;
-        pointsEl.textContent = seedResult.tenantPointCount;
-        statusEl.textContent = "waiting";
-        narrativeEl.textContent =
-          "App logs enter Qdrant, the watcher finds a pattern, OperaIQ acts, and the learned incident writes back.";
-        return seedResult;
-      })
-      .catch((error) => {
-        seedPromise = null;
-        statusEl.textContent = "locked";
-        narrativeEl.textContent =
-          "Memory is not prepared yet. Use the local CLI or provide a production token before writing.";
-        throw error;
-      });
-  }
-  return seedPromise;
-}
-
 async function prepareMemoryFromReadiness() {
   const readiness = await loadReadiness();
   const qdrant = readiness?.qdrant || {};
@@ -182,15 +225,30 @@ async function prepareMemoryFromReadiness() {
   memoryPrepared = true;
 }
 
+async function assertMemoryReady() {
+  if (memoryPrepared) {
+    return;
+  }
+
+  const readiness = await loadReadiness();
+  const pointCount = readiness?.qdrant?.tenantPointCount;
+  if (typeof pointCount === "number" && pointCount > 0) {
+    memoryPrepared = true;
+    return;
+  }
+
+  throw new Error("Memory is not prepared. Seed once from a trusted operator session.");
+}
+
 async function resolveCurrentAlert() {
   setBusy(true);
   statusEl.textContent = "embedding";
-  narrativeEl.textContent = "Embedding alert and querying Qdrant with orgId filter...";
+  agentModeEl.textContent = "agent active";
+  setIncidentState("in_progress");
+  narrativeEl.textContent = "Embedding alert and querying Qdrant with orgId filter.";
 
   try {
-    if (!memoryPrepared) {
-      await seedMemoryOnce();
-    }
+    await assertMemoryReady();
     renderResult(await postJson("/api/alerts/resolve", alertPayload()));
   } catch (error) {
     renderError(error);
@@ -199,6 +257,58 @@ async function resolveCurrentAlert() {
   }
 }
 
+function integrationMatchesForm(integration) {
+  const current = integrationPayload();
+  return integration?.orgId === current.orgId && integration?.project === current.project;
+}
+
+async function requestWebhookIntegration() {
+  const integration = await postJson("/api/integrations/webhook", integrationPayload());
+  renderWebhookIntegration(integration);
+  return integration;
+}
+
+async function generateWebhookIntegration() {
+  setBusy(true);
+  statusEl.textContent = "registering";
+  narrativeEl.textContent = "Registering a signed source webhook URL for this org and project.";
+  webhookResultEl.textContent = "Generating webhook URL.";
+
+  try {
+    return await requestWebhookIntegration();
+  } catch (error) {
+    renderError(error);
+    return null;
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function ensureWebhookIntegration() {
+  if (integrationMatchesForm(activeWebhookIntegration)) {
+    return activeWebhookIntegration;
+  }
+  return requestWebhookIntegration();
+}
+
+async function copyWebhookUrl() {
+  setBusy(true);
+  try {
+    const integration = await ensureWebhookIntegration();
+    if (!integration) {
+      return;
+    }
+    await navigator.clipboard.writeText(integration.webhookUrl);
+    webhookResultEl.textContent = "Webhook URL copied.";
+  } catch (error) {
+    renderError(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
 resolveButton.addEventListener("click", resolveCurrentAlert);
+generateWebhookButton.addEventListener("click", generateWebhookIntegration);
+copyWebhookButton.addEventListener("click", copyWebhookUrl);
 
 prepareMemoryFromReadiness().catch(renderError);

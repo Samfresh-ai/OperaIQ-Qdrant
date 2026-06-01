@@ -17,7 +17,7 @@ Qdrant is protected with `QDRANT__SERVICE__API_KEY`. Do not expose port `6333` p
 
 ```bash
 cp .env.aws.example .env.aws
-# fill QDRANT_API_KEY and OPERAIQ_API_TOKEN
+# fill QDRANT_API_KEY, OPERAIQ_API_TOKEN, and OPERAIQ_WEBHOOK_SECRET
 docker compose --env-file .env.aws -f docker-compose.aws.yml up -d --build
 ```
 
@@ -66,5 +66,6 @@ Do not call this AWS path production-ready if:
 - Qdrant is in memory mode.
 - Qdrant storage is not on a persistent volume.
 - `OPERAIQ_API_TOKEN` is empty.
+- `OPERAIQ_WEBHOOK_SECRET` is empty.
 - `/runtime/readiness` has issues.
 - Port `6333` is open to the internet without TLS and an API key.
