@@ -9,22 +9,22 @@ RUN apt-get update \
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/agent/package.json packages/agent/package.json
-COPY packages/splunk-brain/package.json packages/splunk-brain/package.json
-COPY packages/splunk-mcp/package.json packages/splunk-mcp/package.json
+COPY packages/qdrant-brain/package.json packages/qdrant-brain/package.json
+COPY packages/qdrant-mcp/package.json packages/qdrant-mcp/package.json
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
 ARG NEXT_PUBLIC_API_URL=
-ARG NEXT_PUBLIC_SPLUNK_DASHBOARD_URL=/splunk
+ARG NEXT_PUBLIC_QDRANT_DASHBOARD_URL=/qdrant
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-ENV NEXT_PUBLIC_SPLUNK_DASHBOARD_URL=${NEXT_PUBLIC_SPLUNK_DASHBOARD_URL}
+ENV NEXT_PUBLIC_QDRANT_DASHBOARD_URL=${NEXT_PUBLIC_QDRANT_DASHBOARD_URL}
 COPY packages packages
 COPY apps/api apps/api
 COPY apps/web apps/web
-RUN pnpm --filter @sentinel/api... build
-RUN pnpm --filter @sentinel/web build
+RUN pnpm --filter @operaiq/api... build
+RUN pnpm --filter @operaiq/web build
 RUN mkdir -p /out/web/apps/web/.next \
   && cp -R apps/web/.next/standalone/. /out/web/ \
   && cp -R apps/web/.next/static /out/web/apps/web/.next/static \
@@ -43,7 +43,7 @@ COPY --from=build --chown=node:node /app/apps/api/node_modules ./apps/api/node_m
 COPY --from=build --chown=node:node /app/apps/api/dist ./apps/api/dist
 COPY --from=build --chown=node:node /app/packages ./packages
 COPY --from=build --chown=node:node /out/web ./web
-COPY --chown=node:node apps/api/docker/sentinel-combined-server.mjs ./server.mjs
+COPY --chown=node:node apps/api/docker/operaiq-combined-server.mjs ./server.mjs
 USER node
 EXPOSE 3001
 CMD ["node", "server.mjs"]

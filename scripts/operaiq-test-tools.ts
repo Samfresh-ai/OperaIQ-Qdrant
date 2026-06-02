@@ -1,12 +1,12 @@
 import "dotenv/config";
-import { insertSentinelIncident } from "@sentinel/splunk-brain";
+import { insertOperaIQIncident } from "@operaiq/qdrant-brain";
 import {
   queryQdrantMemory,
-  sentinelGetRunbook,
-  sentinelGetServiceDependencyGraph,
-  sentinelSearchSimilarIncidents,
-  sentinelWritePostmortem
-} from "@sentinel/agent";
+  operaiqGetRunbook,
+  operaiqGetServiceDependencyGraph,
+  operaiqSearchSimilarIncidents,
+  operaiqWritePostmortem
+} from "@operaiq/agent";
 import { ensureSeedOrg } from "./test-org.js";
 
 function writeLine(line: string): void {
@@ -14,13 +14,12 @@ function writeLine(line: string): void {
 }
 
 async function main(): Promise<void> {
-  process.env.SENTINEL_MODE = "true";
   process.env.AGENT_NAME = "OperaIQ";
-  process.env.SENTINEL_LOCAL_VERIFY = process.env.SENTINEL_LOCAL_VERIFY || "true";
-  process.env.SENTINEL_GENERATION_PROVIDER = process.env.SENTINEL_GENERATION_PROVIDER || "offline";
+  process.env.OPERAIQ_LOCAL_VERIFY = process.env.OPERAIQ_LOCAL_VERIFY || "true";
+  process.env.OPERAIQ_GENERATION_PROVIDER = process.env.OPERAIQ_GENERATION_PROVIDER || "offline";
   const org = await ensureSeedOrg();
   const detectedAt = new Date();
-  const incidentId = await insertSentinelIncident({
+  const incidentId = await insertOperaIQIncident({
     orgId: org.orgId,
     title: `OperaIQ tool test incident ${detectedAt.toISOString()}`,
     severity: "P3",
@@ -36,20 +35,20 @@ async function main(): Promise<void> {
     postMortemId: null
   });
 
-  const similar = await sentinelSearchSimilarIncidents({ symptoms: ["Redis ECONNRESET", "payment checkout failures"], limit: 3, orgId: org.orgId, currentIncidentId: incidentId });
+  const similar = await operaiqSearchSimilarIncidents({ symptoms: ["Redis ECONNRESET", "payment checkout failures"], limit: 3, orgId: org.orgId, currentIncidentId: incidentId });
   if (similar.length === 0) throw new Error("search_similar_incidents returned no Qdrant matches");
 
   const memory = await queryQdrantMemory({ services: ["payment-service", "redis-cache"], symptoms: ["Redis ECONNRESET"], orgId: org.orgId, description: "Tool test Qdrant retrieval" });
   if (memory.eventCount <= 0) throw new Error("query_qdrant_memory returned no service signals");
 
-  const graph = await sentinelGetServiceDependencyGraph({ serviceName: "payment-service", orgId: org.orgId });
+  const graph = await operaiqGetServiceDependencyGraph({ serviceName: "payment-service", orgId: org.orgId });
   if (!graph) throw new Error("get_service_dependency_graph returned no service graph");
 
-  const runbook = await sentinelGetRunbook({ incidentDescription: "Redis ECONNRESET payment checkout failures", affectedServices: ["payment-service", "redis-cache"], rootCauseCandidate: "redis-cache", orgId: org.orgId });
+  const runbook = await operaiqGetRunbook({ incidentDescription: "Redis ECONNRESET payment checkout failures", affectedServices: ["payment-service", "redis-cache"], rootCauseCandidate: "redis-cache", orgId: org.orgId });
   if (!runbook || runbook.steps.length === 0) throw new Error("get_runbook returned no runbook");
 
   const now = new Date().toISOString();
-  const postmortem = await sentinelWritePostmortem({
+  const postmortem = await operaiqWritePostmortem({
     incidentId,
     orgId: org.orgId,
     timeline: [{ timestamp: now, event: "OperaIQ tool test opened", actor: "operaiq" }],

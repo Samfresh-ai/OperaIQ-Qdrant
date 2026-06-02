@@ -1,5 +1,5 @@
 {
-  "name": "@sentinel/api",
+  "name": "@operaiq/api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,9 +10,9 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@sentinel/agent": "workspace:*",
-    "@sentinel/shared": "workspace:*",
-    "@sentinel/splunk-brain": "workspace:*",
+    "@operaiq/agent": "workspace:*",
+    "@operaiq/shared": "workspace:*",
+    "@operaiq/qdrant-brain": "workspace:*",
     "@slack/web-api": "^7.8.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",

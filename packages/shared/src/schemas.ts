@@ -21,7 +21,7 @@ const booleanString = z.preprocess((value) => {
 
 export const severitySchema = z.enum(["P1", "P2", "P3", "P4"]);
 export const incidentStatusSchema = z.enum(["open", "resolved", "in_progress", "escalated", "failed"]);
-export const actorSchema = z.enum(["operaiq", "sentinel", "human"]);
+export const actorSchema = z.enum(["operaiq", "human"]);
 export const remediationActionSchema = z.enum([
   "scale_service",
   "restart_pod",
@@ -36,8 +36,8 @@ export const envSchema = z.object({
   GOOGLE_CLOUD_PROJECT_ID: optionalNonEmptyString,
   GOOGLE_CLOUD_REGION: z.string().min(1).default("us-central1"),
   VERTEX_AI_LOCATION: z.string().min(1).default("us-central1"),
-  SENTINEL_AI_PROVIDER: z.enum(["vertex", "offline"]).default("vertex"),
-  SENTINEL_GENERATION_PROVIDER: z.preprocess(
+  OPERAIQ_AI_PROVIDER: z.enum(["vertex", "offline"]).default("vertex"),
+  OPERAIQ_GENERATION_PROVIDER: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.enum(["vertex", "offline", "nvidia", "openai-compatible"]).optional()
   ),
@@ -65,7 +65,7 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3001),
   WEBHOOK_SECRET: z.string().min(1),
   AGENT_TOOL_SECRET: optionalNonEmptyString,
-  SENTINEL_REMEDIATION_BACKEND: z.enum(["cloud-run", "admin-endpoint"]).default("cloud-run"),
+  OPERAIQ_REMEDIATION_BACKEND: z.enum(["cloud-run", "admin-endpoint"]).default("cloud-run"),
   PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
   API_PUBLIC_URL: optionalUrl,
   NEXT_PUBLIC_API_URL: z.string().url().default("http://localhost:3001")
@@ -150,9 +150,9 @@ export const prometheusAlertSchema = z
   })
   .passthrough();
 
-export const genericSentinelAlertPayloadSchema = z
+export const genericOperaIQAlertPayloadSchema = z
   .object({
-    source: z.enum(["operaiq", "sentinel"]).default("operaiq"),
+    source: z.literal("operaiq").default("operaiq"),
     title: z.string().min(1),
     severity: severitySchema,
     service: z.string().min(1),
@@ -164,7 +164,7 @@ export const genericSentinelAlertPayloadSchema = z
   .passthrough();
 
 export const normalizedAlertSchema = z.object({
-  source: z.enum(["pagerduty", "datadog", "prometheus", "operaiq", "sentinel"]),
+  source: z.enum(["pagerduty", "datadog", "prometheus", "operaiq"]),
   title: z.string().min(1),
   severity: severitySchema,
   affectedServices: z.array(z.string().min(1)).min(1),
@@ -175,7 +175,7 @@ export const normalizedAlertSchema = z.object({
 });
 
 export const webhookPayloadSchema = z.union([
-  genericSentinelAlertPayloadSchema,
+  genericOperaIQAlertPayloadSchema,
   pagerDutyWebhookPayloadSchema,
   datadogMonitorPayloadSchema,
   prometheusAlertSchema
@@ -223,7 +223,7 @@ export type RiskLevel = z.infer<typeof riskLevelSchema>;
 export type RemediationAction = z.infer<typeof remediationActionSchema>;
 export type AgentStepType = z.infer<typeof agentStepTypeSchema>;
 export type NormalizedAlert = z.infer<typeof normalizedAlertSchema>;
-export type GenericSentinelAlertPayload = z.infer<typeof genericSentinelAlertPayloadSchema>;
+export type GenericOperaIQAlertPayload = z.infer<typeof genericOperaIQAlertPayloadSchema>;
 export type RunbookStep = z.infer<typeof runbookStepSchema>;
 export type AgentEvent = z.infer<typeof agentEventSchema>;
 export type ExecuteRemediationInput = z.infer<typeof executeRemediationInputSchema>;

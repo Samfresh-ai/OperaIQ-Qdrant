@@ -1,4 +1,4 @@
-import type { AgentEvent } from "@sentinel/shared";
+import type { AgentEvent } from "@operaiq/shared";
 
 type EventHandler = (event: AgentEvent) => void;
 

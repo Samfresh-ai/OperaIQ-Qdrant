@@ -10,5 +10,4 @@ coverage
 *.tsbuildinfo
 *.log
 *.pid
-vendor/splunk/
 artifacts/

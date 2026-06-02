@@ -7,9 +7,5 @@
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
   "include": ["src/**/*.ts"],
-  "references": [
-    { "path": "../../packages/shared" },
-    { "path": "../../packages/qdrant-brain" },
-    { "path": "../../packages/agent" }
-  ]
+  "references": [{ "path": "../shared" }, { "path": "../qdrant-brain" }]
 }

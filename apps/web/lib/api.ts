@@ -70,7 +70,7 @@ export interface Postmortem {
   incidentId: string;
   title: string;
   summary: string;
-  timeline: Array<{ timestamp: string; event: string; actor: "operaiq" | "sentinel" | "human" }>;
+  timeline: Array<{ timestamp: string; event: string; actor: "operaiq" | "operaiq" | "human" }>;
   rootCause: string;
   contributingFactors: string[];
   remediationTaken: string[];

@@ -1,5 +1,5 @@
 {
-  "name": "@operaiq/shared",
+  "name": "@operaiq/qdrant-brain",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,6 +8,11 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./models": {
+      "development": "./src/models.ts",
+      "types": "./dist/models.d.ts",
+      "import": "./dist/models.js"
     }
   },
   "scripts": {
@@ -15,6 +20,7 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
+    "@operaiq/shared": "workspace:*",
     "pino": "^9.6.0",
     "zod": "^3.24.1"
   },

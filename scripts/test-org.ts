@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { createCollection, createKvKey, getDocument, insertDocument, queryDocuments, updateDocument } from "@sentinel/splunk-brain";
+import { createCollection, createKvKey, getDocument, insertDocument, queryDocuments, updateDocument } from "@operaiq/qdrant-brain";
 
 export const SEED_ORG_ID = process.env.SEED_ORG_ID ?? process.env.OPERAIQ_ORG_ID ?? "operaiq-local-org";
 export const SEED_ORG_NAME = process.env.SEED_ORG_NAME ?? "OperaIQ Demo";

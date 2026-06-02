@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
-import { countDocuments, createCollection, createKvKey, getDocument, insertDocument, queryDocuments, updateDocument } from "@sentinel/splunk-brain";
+import { countDocuments, createCollection, createKvKey, getDocument, insertDocument, queryDocuments, updateDocument } from "@operaiq/qdrant-brain";
 
 export interface AuthenticatedOrg {
   orgId: string;

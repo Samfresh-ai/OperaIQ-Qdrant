@@ -1,4 +1,4 @@
-import { assertProductionSafeRuntime, createLogger } from "@sentinel/shared";
+import { assertProductionSafeRuntime, createLogger } from "@operaiq/shared";
 import { createApp } from "./app.js";
 
 const logger = createLogger("operaiq-api-server");

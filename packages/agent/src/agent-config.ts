@@ -1,14 +1,14 @@
 import {
   executeRemediationDefinition,
   queryQdrantMemoryDefinition,
-  sentinelGetRunbookDefinition,
-  sentinelGetServiceDependencyGraphDefinition,
-  sentinelSearchSimilarIncidentsDefinition,
-  sentinelWritePostmortemDefinition,
+  operaiqGetRunbookDefinition,
+  operaiqGetServiceDependencyGraphDefinition,
+  operaiqSearchSimilarIncidentsDefinition,
+  operaiqWritePostmortemDefinition,
 } from "./tools/index.js";
 import type { AgentToolDefinition } from "./tool-json-schemas.js";
 
-export const sentinelSystemInstruction = `You are OperaIQ, a Qdrant-powered autonomous incident-response agent. When an incident arrives:
+export const operaiqSystemInstruction = `You are OperaIQ, a Qdrant-powered autonomous incident-response agent. When an incident arrives:
 
 STEP 1 - ASSESS: Parse the alert. Extract: affected service, symptoms list, severity.
 
@@ -26,13 +26,13 @@ STEP 6 - CLOSE: Once the incident is resolved, call write_postmortem with the co
 
 You must narrate every decision step in plain English before taking action. This narration is streamed to the engineering team in real time. They are watching you work.`;
 
-export const sentinelAgentToolDefinitions: AgentToolDefinition[] = [
-  sentinelSearchSimilarIncidentsDefinition,
+export const operaiqAgentToolDefinitions: AgentToolDefinition[] = [
+  operaiqSearchSimilarIncidentsDefinition,
   queryQdrantMemoryDefinition,
-  sentinelGetServiceDependencyGraphDefinition,
-  sentinelGetRunbookDefinition,
+  operaiqGetServiceDependencyGraphDefinition,
+  operaiqGetRunbookDefinition,
   executeRemediationDefinition,
-  sentinelWritePostmortemDefinition
+  operaiqWritePostmortemDefinition
 ];
 
 export interface AgentBuilderConfig {
@@ -47,15 +47,15 @@ export interface AgentBuilderConfig {
   openApiSpecUrl: string;
 }
 
-export function buildSentinelAgentConfig(toolExecutionBaseUrl: string): AgentBuilderConfig {
+export function buildOperaIQAgentConfig(toolExecutionBaseUrl: string): AgentBuilderConfig {
   return {
     displayName: "OperaIQ",
     description: "Qdrant-powered incident response agent with vector memory, service-context retrieval, and safe remediation tools.",
     defaultLanguageCode: "en",
     timeZone: "UTC",
     model: "configured-generation-provider",
-    systemInstruction: sentinelSystemInstruction,
-    tools: sentinelAgentToolDefinitions,
+    systemInstruction: operaiqSystemInstruction,
+    tools: operaiqAgentToolDefinitions,
     toolExecutionBaseUrl,
     openApiSpecUrl: `${toolExecutionBaseUrl.replace(/\/$/, "")}/agent/openapi.json`
   };
@@ -69,8 +69,8 @@ export function agentBuilderDeploymentCommands(input: {
   const configPath = "packages/agent/agent-builder-config.json";
   return [
     `gcloud services enable aiplatform.googleapis.com discoveryengine.googleapis.com --project=${input.projectId}`,
-    `pnpm operaiq:smoke-test --write-config=${configPath}`,
+    `pnpm operaiq:test-tools --write-config=${configPath}`,
     `gcloud alpha discovery-engine agents create --project=${input.projectId} --location=${input.region} --display-name=OperaIQ --config=${configPath}`,
-    `gcloud run services update sentinel-api --region=${input.region} --update-env-vars=AGENT_TOOL_EXECUTION_BASE_URL=${input.apiBaseUrl}`
+    `gcloud run services update operaiq-api --region=${input.region} --update-env-vars=AGENT_TOOL_EXECUTION_BASE_URL=${input.apiBaseUrl}`
   ];
 }

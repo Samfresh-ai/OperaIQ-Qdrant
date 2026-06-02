@@ -51,7 +51,7 @@ export const queryQdrantMemorySchema: JsonSchema = {
   }
 };
 
-export const querySplunkLogsSchema = queryQdrantMemorySchema;
+export const queryQdrantLogsSchema = queryQdrantMemorySchema;
 
 export const executeRemediationSchema: JsonSchema = {
   type: "object",
@@ -82,7 +82,7 @@ export const writePostmortemSchema: JsonSchema = {
         properties: {
           timestamp: { type: "string" },
           event: { type: "string" },
-          actor: { type: "string", enum: ["operaiq", "sentinel", "human"] }
+          actor: { type: "string", enum: ["operaiq", "human"] }
         }
       }
     },

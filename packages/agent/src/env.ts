@@ -1,4 +1,4 @@
-import { loadRootEnv } from "@sentinel/shared";
+import { loadRootEnv } from "@operaiq/shared";
 import { z } from "zod";
 
 loadRootEnv();
@@ -17,8 +17,8 @@ const agentEnvSchema = z.object({
   GOOGLE_CLOUD_PROJECT_ID: optionalNonEmptyString,
   GOOGLE_CLOUD_REGION: z.string().min(1).default("us-central1"),
   VERTEX_AI_LOCATION: z.string().min(1).default("us-central1"),
-  SENTINEL_AI_PROVIDER: z.enum(["vertex", "offline"]).default("vertex"),
-  SENTINEL_GENERATION_PROVIDER: z.preprocess(
+  OPERAIQ_AI_PROVIDER: z.enum(["vertex", "offline"]).default("vertex"),
+  OPERAIQ_GENERATION_PROVIDER: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.enum(["vertex", "offline", "nvidia", "openai-compatible"]).optional()
   ),
@@ -33,7 +33,7 @@ const agentEnvSchema = z.object({
   PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
   WEBHOOK_SECRET: optionalNonEmptyString,
   AGENT_TOOL_SECRET: optionalNonEmptyString,
-  SENTINEL_REMEDIATION_BACKEND: z.enum(["cloud-run", "admin-endpoint"]).default("cloud-run"),
+  OPERAIQ_REMEDIATION_BACKEND: z.enum(["cloud-run", "admin-endpoint"]).default("cloud-run"),
   CLOUD_RUN_REMEDIATION_JOB_PREFIX: z.string().min(1).default("operaiq-remediate"),
   AGENT_NAME: z.string().min(1).default("OperaIQ")
 });

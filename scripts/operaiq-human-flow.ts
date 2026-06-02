@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { mkdir, writeFile } from "node:fs/promises";
-import { insertSentinelIncident, queryDocuments, waitForQdrantReady } from "@sentinel/splunk-brain";
-import { runSentinelAgent } from "@sentinel/agent";
+import { insertOperaIQIncident, queryDocuments, waitForQdrantReady } from "@operaiq/qdrant-brain";
+import { runOperaIQAgent } from "@operaiq/agent";
 import { ensureSeedOrg } from "./test-org.js";
 
 const ARTIFACT_DIR = "artifacts/runtime";
@@ -12,11 +12,10 @@ function writeLine(line: string): void {
 
 async function main(): Promise<void> {
   await waitForQdrantReady();
-  process.env.SENTINEL_MODE = "true";
   process.env.AGENT_NAME = "OperaIQ";
-  process.env.SENTINEL_LOCAL_VERIFY = process.env.SENTINEL_LOCAL_VERIFY || "true";
-  process.env.SENTINEL_REMEDIATION_WAIT_MS = process.env.SENTINEL_REMEDIATION_WAIT_MS || "0";
-  process.env.SENTINEL_VERIFY_WAIT_MS = process.env.SENTINEL_VERIFY_WAIT_MS || "0";
+  process.env.OPERAIQ_LOCAL_VERIFY = process.env.OPERAIQ_LOCAL_VERIFY || "true";
+  process.env.OPERAIQ_REMEDIATION_WAIT_MS = process.env.OPERAIQ_REMEDIATION_WAIT_MS || "0";
+  process.env.OPERAIQ_VERIFY_WAIT_MS = process.env.OPERAIQ_VERIFY_WAIT_MS || "0";
 
   const org = await ensureSeedOrg();
   const runbooks = await queryDocuments<Record<string, unknown>>("runbooks", {}, 1, { orgId: org.orgId });
@@ -26,7 +25,7 @@ async function main(): Promise<void> {
 
   const id = new Date().toISOString().replace(/[-:.TZ]/g, "");
   const proofPath = `${ARTIFACT_DIR}/operaiq-human-flow-${id}.json`;
-  const incidentId = await insertSentinelIncident({
+  const incidentId = await insertOperaIQIncident({
     orgId: org.orgId,
     title: `OperaIQ payment incident ${id}`,
     severity: "P3",
@@ -49,7 +48,7 @@ async function main(): Promise<void> {
   });
 
   const events: unknown[] = [];
-  const result = await runSentinelAgent(
+  const result = await runOperaIQAgent(
     {
       incidentId,
       orgId: org.orgId,

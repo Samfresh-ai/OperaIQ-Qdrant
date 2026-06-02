@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { createLogger } from "@sentinel/shared";
+import { createLogger } from "@operaiq/shared";
 
-export const toolLogger = createLogger("sentinel-tools");
+export const toolLogger = createLogger("operaiq-tools");
 
 export function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;

@@ -15,15 +15,15 @@ importers:
         specifier: ^9.0.3
         version: 9.0.3
     devDependencies:
-      '@sentinel/agent':
+      '@operaiq/agent':
         specifier: workspace:*
         version: link:packages/agent
-      '@sentinel/shared':
+      '@operaiq/qdrant-brain':
+        specifier: workspace:*
+        version: link:packages/qdrant-brain
+      '@operaiq/shared':
         specifier: workspace:*
         version: link:packages/shared
-      '@sentinel/splunk-brain':
-        specifier: workspace:*
-        version: link:packages/splunk-brain
       '@types/jsonwebtoken':
         specifier: ^9.0.10
         version: 9.0.10
@@ -45,15 +45,15 @@ importers:
 
   apps/api:
     dependencies:
-      '@sentinel/agent':
+      '@operaiq/agent':
         specifier: workspace:*
         version: link:../../packages/agent
-      '@sentinel/shared':
+      '@operaiq/qdrant-brain':
+        specifier: workspace:*
+        version: link:../../packages/qdrant-brain
+      '@operaiq/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@sentinel/splunk-brain':
-        specifier: workspace:*
-        version: link:../../packages/splunk-brain
       '@slack/web-api':
         specifier: ^7.8.0
         version: 7.16.0
@@ -167,15 +167,15 @@ importers:
       '@google/genai':
         specifier: ^1.52.0
         version: 1.52.0(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))
-      '@sentinel/shared':
+      '@operaiq/qdrant-brain':
+        specifier: workspace:*
+        version: link:../qdrant-brain
+      '@operaiq/qdrant-mcp':
+        specifier: workspace:*
+        version: link:../qdrant-mcp
+      '@operaiq/shared':
         specifier: workspace:*
         version: link:../shared
-      '@sentinel/splunk-brain':
-        specifier: workspace:*
-        version: link:../splunk-brain
-      '@sentinel/splunk-mcp':
-        specifier: workspace:*
-        version: link:../splunk-mcp
       '@slack/web-api':
         specifier: ^7.8.0
         version: 7.16.0
@@ -193,46 +193,46 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
+  packages/qdrant-brain:
+    dependencies:
+      '@operaiq/shared':
+        specifier: workspace:*
+        version: link:../shared
+      pino:
+        specifier: ^9.6.0
+        version: 9.14.0
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/qdrant-mcp:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.4.1
+        version: 1.29.0(zod@3.25.76)
+      '@operaiq/qdrant-brain':
+        specifier: workspace:*
+        version: link:../qdrant-brain
+      '@operaiq/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
   packages/shared:
     dependencies:
       pino:
         specifier: ^9.6.0
         version: 9.14.0
-      zod:
-        specifier: ^3.24.1
-        version: 3.25.76
-    devDependencies:
-      typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
-
-  packages/splunk-brain:
-    dependencies:
-      '@sentinel/shared':
-        specifier: workspace:*
-        version: link:../shared
-      pino:
-        specifier: ^9.6.0
-        version: 9.14.0
-      zod:
-        specifier: ^3.24.1
-        version: 3.25.76
-    devDependencies:
-      typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
-
-  packages/splunk-mcp:
-    dependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.4.1
-        version: 1.29.0(zod@3.25.76)
-      '@sentinel/shared':
-        specifier: workspace:*
-        version: link:../shared
-      '@sentinel/splunk-brain':
-        specifier: workspace:*
-        version: link:../splunk-brain
       zod:
         specifier: ^3.24.1
         version: 3.25.76

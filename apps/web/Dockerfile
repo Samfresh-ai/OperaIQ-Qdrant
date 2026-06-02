@@ -9,8 +9,8 @@ RUN apt-get update \
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/agent/package.json packages/agent/package.json
-COPY packages/splunk-brain/package.json packages/splunk-brain/package.json
-COPY packages/splunk-mcp/package.json packages/splunk-mcp/package.json
+COPY packages/qdrant-brain/package.json packages/qdrant-brain/package.json
+COPY packages/qdrant-mcp/package.json packages/qdrant-mcp/package.json
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 RUN pnpm install --frozen-lockfile
@@ -21,7 +21,7 @@ ARG NEXT_PUBLIC_QDRANT_DASHBOARD_URL=
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_PUBLIC_QDRANT_DASHBOARD_URL=${NEXT_PUBLIC_QDRANT_DASHBOARD_URL}
 COPY apps/web apps/web
-RUN pnpm --filter @sentinel/web build
+RUN pnpm --filter @operaiq/web build
 
 FROM node:22-slim AS runner
 ENV NODE_ENV=production

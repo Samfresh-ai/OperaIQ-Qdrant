@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
-import { isProductionRuntime, productionReadinessViolations } from "@sentinel/shared";
+import { isProductionRuntime, productionReadinessViolations } from "@operaiq/shared";
 
 function writeLine(line: string): void {
   process.stdout.write(`${line}\n`);
@@ -19,11 +19,11 @@ function envValue(name: string): string {
 }
 
 function generationProvider(): string {
-  return envValue("SENTINEL_GENERATION_PROVIDER").toLowerCase() || envValue("SENTINEL_AI_PROVIDER").toLowerCase() || "vertex";
+  return envValue("OPERAIQ_GENERATION_PROVIDER").toLowerCase() || envValue("OPERAIQ_AI_PROVIDER").toLowerCase() || "vertex";
 }
 
 function remediationBackend(): string {
-  return envValue("SENTINEL_REMEDIATION_BACKEND").toLowerCase() || "cloud-run";
+  return envValue("OPERAIQ_REMEDIATION_BACKEND").toLowerCase() || "cloud-run";
 }
 
 function checkCommand(command: string, args: string[]): { ok: boolean; detail: string } {
@@ -80,8 +80,8 @@ async function checkSlack(): Promise<{ ok: boolean; detail: string }> {
 }
 
 async function main(): Promise<void> {
-  const localVerifyMode = booleanEnv("SENTINEL_LOCAL_VERIFY");
-  const offlineAi = process.env.SENTINEL_AI_PROVIDER === "offline";
+  const localVerifyMode = booleanEnv("OPERAIQ_LOCAL_VERIFY");
+  const offlineAi = process.env.OPERAIQ_AI_PROVIDER === "offline";
   const provider = generationProvider();
   const backend = remediationBackend();
   const usesVertex = provider === "vertex";
@@ -143,10 +143,10 @@ async function main(): Promise<void> {
   checks.push({ name: "qdrant", ok: true, detail: "checked by scripts/qdrant-setup-check.ts" });
   checks.push({ name: "webhook-flow", ok: true, detail: "OperaIQ accepts generic incident alert webhooks" });
   if (offlineAi) {
-    checks.push({ name: "vertex-ai", ok: true, detail: "skipped because SENTINEL_AI_PROVIDER=offline" });
+    checks.push({ name: "vertex-ai", ok: true, detail: "skipped because OPERAIQ_AI_PROVIDER=offline" });
   }
   if (localVerifyMode) {
-    checks.push({ name: "slack", ok: true, detail: "skipped because SENTINEL_LOCAL_VERIFY=true" });
+    checks.push({ name: "slack", ok: true, detail: "skipped because OPERAIQ_LOCAL_VERIFY=true" });
   } else if (hasEnv("SLACK_BOT_TOKEN") && hasEnv("SLACK_DEFAULT_INCIDENT_CHANNEL")) {
     checks.push({ name: "slack", ...(await checkSlack()) });
   }

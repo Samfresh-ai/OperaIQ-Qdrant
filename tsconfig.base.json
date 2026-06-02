@@ -19,11 +19,11 @@
     "sourceMap": true,
     "baseUrl": ".",
     "paths": {
-      "@sentinel/shared": ["packages/shared/src/index.ts"],
-      "@sentinel/agent": ["packages/agent/src/index.ts"],
-      "@sentinel/splunk-brain": ["packages/splunk-brain/src/index.ts"],
-      "@sentinel/splunk-brain/models": ["packages/splunk-brain/src/models.ts"],
-      "@sentinel/splunk-mcp": ["packages/splunk-mcp/src/index.ts"]
+      "@operaiq/shared": ["packages/shared/src/index.ts"],
+      "@operaiq/agent": ["packages/agent/src/index.ts"],
+      "@operaiq/qdrant-brain": ["packages/qdrant-brain/src/index.ts"],
+      "@operaiq/qdrant-brain/models": ["packages/qdrant-brain/src/models.ts"],
+      "@operaiq/qdrant-mcp": ["packages/qdrant-mcp/src/index.ts"]
     }
   }
 }

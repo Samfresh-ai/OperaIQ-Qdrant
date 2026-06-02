@@ -5,7 +5,7 @@ import {
   describeQdrantEndpoints,
   insertDocument,
   waitForQdrantReady
-} from "@sentinel/splunk-brain";
+} from "@operaiq/qdrant-brain";
 
 function writeLine(line: string): void {
   process.stdout.write(`${line}\n`);

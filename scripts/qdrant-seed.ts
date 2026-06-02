@@ -5,7 +5,7 @@ import {
   createCollection,
   sendEvent,
   waitForQdrantReady
-} from "@sentinel/splunk-brain";
+} from "@operaiq/qdrant-brain";
 import { incidents, patterns, runbooks } from "./seed-data.js";
 import { ensureSeedOrg } from "./test-org.js";
 
@@ -152,7 +152,7 @@ async function main(): Promise<void> {
 
   await sendEvent(
     incidents.slice(0, 5).map((incident, index) => ({
-      sourcetype: "operaiq:postmortem",
+      eventType: "operaiq:postmortem",
       event: {
         kind: "postmortem",
         type: "postmortem",

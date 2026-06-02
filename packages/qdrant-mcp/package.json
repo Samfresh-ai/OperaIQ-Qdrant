@@ -1,5 +1,5 @@
 {
-  "name": "@operaiq/shared",
+  "name": "@operaiq/qdrant-mcp",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,7 +15,9 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
-    "pino": "^9.6.0",
+    "@modelcontextprotocol/sdk": "^1.4.1",
+    "@operaiq/qdrant-brain": "workspace:*",
+    "@operaiq/shared": "workspace:*",
     "zod": "^3.24.1"
   },
   "devDependencies": {

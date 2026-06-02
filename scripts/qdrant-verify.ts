@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { countDocuments, findSimilarIncidents, queryDocuments, waitForQdrantReady } from "@sentinel/splunk-brain";
+import { countDocuments, findSimilarIncidents, queryDocuments, waitForQdrantReady } from "@operaiq/qdrant-brain";
 import { runbooks } from "./seed-data.js";
 import { ensureSeedOrg } from "./test-org.js";
 

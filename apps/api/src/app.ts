@@ -6,26 +6,26 @@ import { z } from "zod";
 import {
   executeRemediation,
   queryQdrantMemory,
-  runSentinelAgent,
-  sentinelAgentToolDefinitions,
-  sentinelGetRunbook,
-  sentinelGetServiceDependencyGraph,
-  sentinelSearchSimilarIncidents,
-  sentinelWritePostmortem
-} from "@sentinel/agent";
+  runOperaIQAgent,
+  operaiqAgentToolDefinitions,
+  operaiqGetRunbook,
+  operaiqGetServiceDependencyGraph,
+  operaiqSearchSimilarIncidents,
+  operaiqWritePostmortem
+} from "@operaiq/agent";
 import {
   countDocuments,
   createCollection,
   createKvKey,
   getDocument,
   insertDocument,
-  insertSentinelIncident,
+  insertOperaIQIncident,
   queryAllDocuments,
   queryDocuments,
   updateDocument,
-  updateSentinelIncident,
+  updateOperaIQIncident,
   writeAuditEntry
-} from "@sentinel/splunk-brain";
+} from "@operaiq/qdrant-brain";
 import {
   createLogger,
   isProductionRuntime,
@@ -35,12 +35,11 @@ import {
   type AgentEvent,
   loadRootEnv,
   type NormalizedAlert
-} from "@sentinel/shared";
+} from "@operaiq/shared";
 import {
   addAgentEventHandler,
   dispatchAgentEvent
 } from "./agent-events.js";
-import { SplunkAlertPayload } from "./schemas/splunk-alert.js";
 import { verifySlackSignature } from "./slack.js";
 import { authRouter, requireAuth, verifyAuth, verifyWebhookOrg, type AuthenticatedRequest } from "./routes/auth.js";
 
@@ -133,7 +132,7 @@ function corsOptions(): Parameters<typeof cors>[0] {
   const allowedOrigins = configuredCorsOrigins();
   return {
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Authorization", "Content-Type", "x-sentinel-secret", "x-sentinel-tool-secret"],
+    allowedHeaders: ["Authorization", "Content-Type", "x-operaiq-secret", "x-operaiq-tool-secret"],
     origin(origin: string | undefined, callback: CorsOriginCallback) {
       if (!origin || allowedOrigins.has(origin.replace(/\/+$/, ""))) {
         callback(null, true);
@@ -150,7 +149,7 @@ function verifyToolSecret(req: Request): void {
     throw new Error("AGENT_TOOL_SECRET or WEBHOOK_SECRET is required for agent tool execution");
   }
   const bearer = req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  const explicit = req.header("x-sentinel-tool-secret") ?? "";
+  const explicit = req.header("x-operaiq-tool-secret") ?? "";
   const actual = bearer.length > 0 ? bearer : explicit;
   const expectedBuffer = Buffer.from(expected);
   const actualBuffer = Buffer.from(actual);
@@ -161,148 +160,8 @@ function verifyToolSecret(req: Request): void {
   }
 }
 
-const SENTINEL_AUTONOMOUS_PAYMENT_SEARCH = "operaiq_auto_detect_payment_errors";
-
-function severityFromSplunk(value: string | undefined): "P1" | "P2" | "P3" | "P4" {
-  const normalized = value?.toUpperCase() ?? "";
-  if (normalized === "5" || normalized === "6" || normalized.includes("P1") || normalized.includes("CRITICAL") || normalized.includes("FATAL")) return "P1";
-  if (normalized === "4" || normalized.includes("P2") || normalized.includes("HIGH") || normalized.includes("ERROR")) return "P2";
-  if (normalized === "3" || normalized.includes("P3") || normalized.includes("WARN")) return "P3";
-  return "P4";
-}
-
-function splunkResultString(payload: SplunkAlertPayload, key: string): string | undefined {
-  const value = (payload.result as Record<string, unknown>)[key];
-  if (typeof value === "string" && value.trim().length > 0) return value;
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  if (Array.isArray(value)) {
-    const parts = value
-      .map((item) => {
-        if (typeof item === "string") return item.trim();
-        if (typeof item === "number" && Number.isFinite(item)) return String(item);
-        return "";
-      })
-      .filter((item) => item.length > 0);
-    if (parts.length > 0) return parts.join(", ");
-  }
-  return undefined;
-}
-
-function objectRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
-function isSentinelId(value: string): boolean {
+function isOperaIQId(value: string): boolean {
   return /^[a-f\d]{24}$/i.test(value);
-}
-
-function stringFromRecord(record: Record<string, unknown>, key: string): string | undefined {
-  const value = record[key];
-  if (typeof value === "string" && value.trim().length > 0) return value.trim();
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  return undefined;
-}
-
-function normalizeSplunkAlertBody(body: unknown): SplunkAlertPayload {
-  if (!Array.isArray(body)) {
-    const record = objectRecord(body);
-    if (record && Array.isArray(record.result)) {
-      const firstResult = record.result.map(objectRecord).find((item): item is Record<string, unknown> => item !== null) ?? {};
-      return SplunkAlertPayload.parse({
-        ...record,
-        result: firstResult,
-        results: record.result
-      });
-    }
-    return SplunkAlertPayload.parse(body);
-  }
-
-  const firstResult = body.map(objectRecord).find((item): item is Record<string, unknown> => item !== null) ?? {};
-  return SplunkAlertPayload.parse({
-    result: firstResult,
-    results: body,
-    results_link: stringFromRecord(firstResult, "results_link") ?? process.env.SPLUNK_RESULTS_LINK ?? "http://localhost:8000/app/sentinel/search",
-    search_name: stringFromRecord(firstResult, "search_name") ?? stringFromRecord(firstResult, "savedsearch_name") ?? "splunk_results_webhook",
-    owner: stringFromRecord(firstResult, "owner") ?? "splunk",
-    app: stringFromRecord(firstResult, "app") ?? "sentinel"
-  });
-}
-
-function normalizeSplunkAlert(payload: SplunkAlertPayload): NormalizedAlert {
-  if (payload.search_name === SENTINEL_AUTONOMOUS_PAYMENT_SEARCH || payload.search_name === "sentinel_test_payment_redis_spike") {
-    const errorCount = splunkResultString(payload, "error_count") ?? splunkResultString(payload, "count");
-    return {
-      source: "operaiq",
-      title: `Legacy alert: ${payload.search_name}`,
-      severity: "P3",
-      affectedServices: ["payment-service"],
-      symptoms: [
-        "Redis ECONNRESET",
-        "connection pool exhausted",
-        "p99 latency elevated",
-        "payment-service checkout failures",
-        ...(errorCount ? [`error_count=${errorCount}`] : [])
-      ],
-      incidentType: payload.search_name,
-      detectedAt: new Date().toISOString(),
-      rawPayload: payload as unknown as Record<string, unknown>
-    };
-  }
-
-  const service = splunkResultString(payload, "service") ?? splunkResultString(payload, "host") ?? splunkResultString(payload, "source") ?? "unknown-service";
-  const symptoms = [
-    payload.search_name,
-    splunkResultString(payload, "sourcetype"),
-    splunkResultString(payload, "source"),
-    splunkResultString(payload, "_raw")
-  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
-  return {
-    source: "operaiq",
-    title: `Legacy alert: ${payload.search_name}`,
-    severity: severityFromSplunk(splunkResultString(payload, "severity") ?? payload.configuration?.severity),
-    affectedServices: [service],
-    symptoms: symptoms.length > 0 ? symptoms.slice(0, 12) : ["legacy saved search alert fired"],
-    incidentType: payload.search_name,
-    detectedAt: new Date().toISOString(),
-    rawPayload: payload as unknown as Record<string, unknown>
-  };
-}
-
-function testControlsAllowed(): boolean {
-  return process.env.SENTINEL_TEST_CONTROLS?.toLowerCase() === "true" && !isProductionRuntime();
-}
-
-function testControlRemediationWaitMs(req: Request, payload: SplunkAlertPayload): number | undefined {
-  if (!testControlsAllowed()) return undefined;
-  const value = req.header("x-sentinel-test-remediation-wait-ms");
-  if (!value) return undefined;
-  const isSeedAlert =
-    payload.search_name.startsWith("sentinel_test_") || payload.search_name === SENTINEL_AUTONOMOUS_PAYMENT_SEARCH;
-  if (!isSeedAlert) return undefined;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 60_000) return undefined;
-  return parsed;
-}
-
-function testControlVerifyFailsBeforePass(req: Request, payload: SplunkAlertPayload): number | undefined {
-  if (!testControlsAllowed()) return undefined;
-  const value = req.header("x-sentinel-verify-fails-before-pass");
-  if (!value) return undefined;
-  const isSeedAlert =
-    payload.search_name.startsWith("sentinel_test_") || payload.search_name === SENTINEL_AUTONOMOUS_PAYMENT_SEARCH;
-  if (!isSeedAlert) return undefined;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 3) return undefined;
-  return parsed;
-}
-
-function testControlForceCrashPhase(req: Request, payload: SplunkAlertPayload): string | undefined {
-  if (!testControlsAllowed()) return undefined;
-  const value = req.header("x-sentinel-force-crash-phase");
-  if (!value) return undefined;
-  if (!payload.search_name.startsWith("sentinel_test_")) return undefined;
-  const normalized = value.toUpperCase();
-  return ["ASSESS", "REMEMBER", "INVESTIGATE", "MAP", "RETRIEVE", "ACT", "VERIFY", "CLOSE"].includes(normalized) ? normalized : undefined;
 }
 
 async function checkOperaIqWebhookRateLimit(orgId: string): Promise<{ allowed: boolean; retryAfter: number }> {
@@ -343,8 +202,8 @@ async function checkOperaIqWebhookRateLimit(orgId: string): Promise<{ allowed: b
   return { allowed: true, retryAfter: 0 };
 }
 
-async function createSentinelIncidentFromAlert(alert: NormalizedAlert, orgId: string): Promise<string> {
-  return insertSentinelIncident({
+async function createOperaIQIncidentFromAlert(alert: NormalizedAlert, orgId: string): Promise<string> {
+  return insertOperaIQIncident({
     orgId,
     title: alert.title,
     severity: alert.severity,
@@ -388,7 +247,7 @@ function asAgentEvents(value: unknown): AgentEvent[] {
   return Array.isArray(value) ? value.filter((item): item is AgentEvent => typeof item === "object" && item !== null) : [];
 }
 
-function serializeSentinelIncident(incident: Record<string, unknown>): Record<string, unknown> {
+function serializeOperaIQIncident(incident: Record<string, unknown>): Record<string, unknown> {
   return {
     id: asString(incident._key),
     title: asString(incident.title),
@@ -436,7 +295,7 @@ function serializeAuditEntry(entry: Record<string, unknown>): Record<string, unk
   };
 }
 
-function serializeSentinelPostmortem(postmortem: Record<string, unknown>): Record<string, unknown> {
+function serializeOperaIQPostmortem(postmortem: Record<string, unknown>): Record<string, unknown> {
   return {
     id: asString(postmortem._key),
     incidentId: asString(postmortem.incidentId),
@@ -453,7 +312,7 @@ function serializeSentinelPostmortem(postmortem: Record<string, unknown>): Recor
   };
 }
 
-function serializeSentinelService(service: Record<string, unknown>): Record<string, unknown> {
+function serializeOperaIQService(service: Record<string, unknown>): Record<string, unknown> {
   return {
     id: asString(service._key) || asString(service.name),
     name: asString(service.name),
@@ -475,17 +334,17 @@ function severityForAlert(value: unknown): NormalizedAlert["severity"] {
   return value === "P1" || value === "P2" || value === "P3" || value === "P4" ? value : "P2";
 }
 
-async function listSentinelIncidents(limit: number, orgId: string): Promise<Record<string, unknown>[]> {
+async function listOperaIQIncidents(limit: number, orgId: string): Promise<Record<string, unknown>[]> {
   try {
     const docs = await queryDocuments<Record<string, unknown>>("incidents", {}, limit, { orgId });
-    return docs.map(serializeSentinelIncident);
+    return docs.map(serializeOperaIQIncident);
   } catch (error: unknown) {
     logger.warn({ error }, "OperaIQ incidents unavailable for merged feed");
     return [];
   }
 }
 
-async function querySentinelCollection(collection: string, limit: number, orgId: string): Promise<Record<string, unknown>[]> {
+async function queryOperaIQCollection(collection: string, limit: number, orgId: string): Promise<Record<string, unknown>[]> {
   try {
     return await queryDocuments<Record<string, unknown>>(collection, {}, limit, { orgId });
   } catch (error: unknown) {
@@ -494,7 +353,7 @@ async function querySentinelCollection(collection: string, limit: number, orgId:
   }
 }
 
-async function countSentinelCollection(collection: string, orgId: string): Promise<number> {
+async function countOperaIQCollection(collection: string, orgId: string): Promise<number> {
   try {
     return await countDocuments(collection, {}, { orgId });
   } catch (error: unknown) {
@@ -755,7 +614,7 @@ async function fireQdrantPatternWebhook(payload: QdrantPatternWebhookBody): Prom
     headers: {
       Authorization: `Bearer ${secret}`,
       "Content-Type": "application/json",
-      "x-sentinel-tool-secret": secret
+      "x-operaiq-tool-secret": secret
     },
     body: JSON.stringify(payload)
   });
@@ -966,7 +825,7 @@ function timestampMs(value: unknown): number {
   return Number.isFinite(ms) ? ms : 0;
 }
 
-async function getSentinelIncidentView(id: string, orgId: string): Promise<{
+async function getOperaIQIncidentView(id: string, orgId: string): Promise<{
   incident: Record<string, unknown>;
   postmortem: Record<string, unknown> | null;
   alertPayload: Record<string, unknown>;
@@ -976,8 +835,8 @@ async function getSentinelIncidentView(id: string, orgId: string): Promise<{
   const postMortemId = typeof incident.postMortemId === "string" ? incident.postMortemId : null;
   const postmortem = postMortemId ? await getDocument<Record<string, unknown>>("postmortems", postMortemId, { orgId }).catch(() => null) : null;
   return {
-    incident: serializeSentinelIncident(incident),
-    postmortem: postmortem ? serializeSentinelPostmortem(postmortem) : null,
+    incident: serializeOperaIQIncident(incident),
+    postmortem: postmortem ? serializeOperaIQPostmortem(postmortem) : null,
     alertPayload: {
       title: asString(incident.title),
       severity: asString(incident.severity),
@@ -989,7 +848,7 @@ async function getSentinelIncidentView(id: string, orgId: string): Promise<{
   };
 }
 
-function alertFromSentinelIncident(incident: Record<string, unknown>): NormalizedAlert {
+function alertFromOperaIQIncident(incident: Record<string, unknown>): NormalizedAlert {
   return {
     source: "operaiq",
     title: asString(incident.title),
@@ -1002,7 +861,7 @@ function alertFromSentinelIncident(incident: Record<string, unknown>): Normalize
   };
 }
 
-async function runSentinelForIncident(input: {
+async function runOperaIQForIncident(input: {
   incidentId: string;
   orgId: string;
   alert: NormalizedAlert;
@@ -1012,11 +871,11 @@ async function runSentinelForIncident(input: {
 }): Promise<void> {
   const current = await getDocument<Record<string, unknown>>("incidents", input.incidentId, { orgId: input.orgId }).catch(() => null);
   const agentEvents = asAgentEvents(current?.agentEvents).slice();
-  const result = await runSentinelAgent(input, async (event) => {
+  const result = await runOperaIQAgent(input, async (event) => {
     logger.info({ event }, "OperaIQ agent event");
     agentEvents.push(event);
     dispatchAgentEvent(event);
-    await updateSentinelIncident(input.incidentId, input.orgId, { agentEvents });
+    await updateOperaIQIncident(input.incidentId, input.orgId, { agentEvents });
   });
   logger.info({ incidentId: input.incidentId, result }, "OperaIQ agent completed");
 }
@@ -1054,7 +913,7 @@ async function flushDeadLetterQueue(options: { force?: boolean } = {}): Promise<
     const currentDlq = await getDocument<Record<string, unknown>>("dead_letter", incidentId).catch(() => null);
     const attemptCount = asNumber(currentDlq?.attemptCount) ?? 0;
     if (attemptCount >= 3) {
-      await updateSentinelIncident(incidentId, orgId, { status: "failed" });
+      await updateOperaIQIncident(incidentId, orgId, { status: "failed" });
       void writeAuditEntry({
         orgId,
         incidentId,
@@ -1102,7 +961,7 @@ async function flushDeadLetterQueue(options: { force?: boolean } = {}): Promise<
       success: true,
       errorMessage: null
     });
-    await runSentinelForIncident({ incidentId, orgId, alert: alertFromSentinelIncident(incident) });
+    await runOperaIQForIncident({ incidentId, orgId, alert: alertFromOperaIQIncident(incident) });
     retried += 1;
   }
   return { retried, failed, scanned: incidents.length };
@@ -1124,17 +983,17 @@ function startDlqMaintenance(): void {
 type ToolHandler = (input: unknown) => Promise<unknown>;
 
 const toolHandlers: Record<string, ToolHandler> = {
-  search_similar_incidents: sentinelSearchSimilarIncidents,
+  search_similar_incidents: operaiqSearchSimilarIncidents,
   query_qdrant_memory: queryQdrantMemory,
-  get_service_dependency_graph: sentinelGetServiceDependencyGraph,
-  get_runbook: sentinelGetRunbook,
+  get_service_dependency_graph: operaiqGetServiceDependencyGraph,
+  get_runbook: operaiqGetRunbook,
   execute_remediation: executeRemediation,
-  write_postmortem: sentinelWritePostmortem
+  write_postmortem: operaiqWritePostmortem
 };
 
 function toolOpenApiDocument(): Record<string, unknown> {
   const paths: Record<string, unknown> = {};
-  for (const tool of sentinelAgentToolDefinitions) {
+  for (const tool of operaiqAgentToolDefinitions) {
     paths[`/agent/tools/${tool.name}`] = {
       post: {
         operationId: tool.name,
@@ -1285,9 +1144,9 @@ export function createApp(): express.Express {
         return;
       }
       const alert = normalizeAlertPayload(req.body);
-      const incidentId = await createSentinelIncidentFromAlert(alert, org.orgId);
+      const incidentId = await createOperaIQIncidentFromAlert(alert, org.orgId);
       setImmediate(() => {
-        runSentinelForIncident({ incidentId, orgId: org.orgId, alert })
+        runOperaIQForIncident({ incidentId, orgId: org.orgId, alert })
           .catch((error: unknown) => {
             logger.error({ incidentId, error }, "OperaIQ agent failed");
           });
@@ -1320,7 +1179,7 @@ export function createApp(): express.Express {
           webhook: "/webhooks/qdrant-pattern"
         }
       };
-      const incidentId = await createSentinelIncidentFromAlert(alert, body.orgId);
+      const incidentId = await createOperaIQIncidentFromAlert(alert, body.orgId);
       await updateDocument("pattern_alerts", body.patternAlertId, {
         incidentId,
         status: "webhook_received",
@@ -1328,7 +1187,7 @@ export function createApp(): express.Express {
         updatedAt: new Date().toISOString()
       }, { orgId: body.orgId });
       setImmediate(() => {
-        runSentinelForIncident({ incidentId, orgId: body.orgId, alert })
+        runOperaIQForIncident({ incidentId, orgId: body.orgId, alert })
           .catch((error: unknown) => {
             logger.error({ incidentId, error }, "OperaIQ Qdrant pattern agent failed");
           });
@@ -1472,8 +1331,8 @@ export function createApp(): express.Express {
           postmortems: postmortems.length
         },
         latestPatternAlert: latestAlert,
-        incident: incident ? serializeSentinelIncident(incident) : null,
-        postmortem: postmortems[0] ? serializeSentinelPostmortem(postmortems[0]!) : null,
+        incident: incident ? serializeOperaIQIncident(incident) : null,
+        postmortem: postmortems[0] ? serializeOperaIQPostmortem(postmortems[0]!) : null,
         audit: audit.map(serializeAuditEntry).sort((left, right) => timestampMs(left.timestamp) - timestampMs(right.timestamp)),
         stages: {
           appLogsStored: logs.length > 0,
@@ -1488,41 +1347,6 @@ export function createApp(): express.Express {
   );
 
   app.post(
-    "/webhooks/splunk-alert",
-    asyncHandler(async (req, res) => {
-      const orgId = typeof req.query.orgId === "string" ? req.query.orgId : "";
-      const secret = typeof req.query.secret === "string" ? req.query.secret : "";
-      const org = await verifyWebhookOrg(orgId, secret);
-      const payload = normalizeSplunkAlertBody(req.body);
-      const rateLimit = await checkOperaIqWebhookRateLimit(org.orgId);
-      if (!rateLimit.allowed) {
-        res.setHeader("Retry-After", String(rateLimit.retryAfter));
-        res.status(429).json({ error: "Rate limit exceeded" });
-        return;
-      }
-      const alert = normalizeSplunkAlert(payload);
-      const remediationWaitMs = testControlRemediationWaitMs(req, payload);
-      const verifyFailsBeforePass = testControlVerifyFailsBeforePass(req, payload);
-      const forceCrashPhase = testControlForceCrashPhase(req, payload);
-      const incidentId = await createSentinelIncidentFromAlert(alert, org.orgId);
-      setImmediate(() => {
-        runSentinelForIncident({
-          incidentId,
-          orgId: org.orgId,
-          alert,
-          ...(remediationWaitMs !== undefined ? { remediationWaitMs } : {}),
-          ...(verifyFailsBeforePass !== undefined ? { verifyFailsBeforePass } : {}),
-          ...(forceCrashPhase !== undefined ? { forceCrashPhase } : {})
-        })
-          .catch((error: unknown) => {
-            logger.error({ incidentId, error }, "OperaIQ agent failed");
-          });
-      });
-      res.status(202).json({ incidentId, status: "open", trigger: "legacy-splunk-alert-action" });
-    })
-  );
-
-  app.post(
     "/webhooks/slack/interactions",
     asyncHandler(async (req, res) => {
       const rawBody = rawBodies.get(req) ?? Buffer.from("");
@@ -1532,7 +1356,7 @@ export function createApp(): express.Express {
       }
       const payloadField = typeof req.body.payload === "string" ? req.body.payload : "";
       const payload = JSON.parse(payloadField) as { actions?: Array<{ action_id?: string; value?: string }> };
-      const action = payload.actions?.find((item) => item.action_id === "operaiq_approve_remediation" || item.action_id === "sentinel_approve_remediation");
+      const action = payload.actions?.find((item) => item.action_id === "operaiq_approve_remediation");
       if (!action?.value) {
         res.status(400).json({ error: "No OperaIQ approval action found" });
         return;
@@ -1584,7 +1408,7 @@ export function createApp(): express.Express {
   app.get(
     "/agent/tools",
     asyncHandler(async (_req, res) => {
-      res.json({ tools: sentinelAgentToolDefinitions });
+      res.json({ tools: operaiqAgentToolDefinitions });
     })
   );
 
@@ -1616,18 +1440,18 @@ export function createApp(): express.Express {
     asyncHandler(async (req, res) => {
       const auth = (req as AuthenticatedRequest).auth ?? verifyAuth(req);
       const pagination = paginationQuerySchema.parse(req.query);
-      const [sentinelItems, sentinelTotal] = await Promise.all([
-        listSentinelIncidents(pagination.pageSize, auth.orgId),
-        countSentinelCollection("incidents", auth.orgId)
+      const [operaiqItems, operaiqTotal] = await Promise.all([
+        listOperaIQIncidents(pagination.pageSize, auth.orgId),
+        countOperaIQCollection("incidents", auth.orgId)
       ]);
-      const merged = [...sentinelItems]
+      const merged = [...operaiqItems]
         .sort((left, right) => {
           const leftTime = Date.parse(asString(left.detectedAt));
           const rightTime = Date.parse(asString(right.detectedAt));
           return (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0);
         })
         .slice(0, pagination.pageSize);
-      res.json({ items: merged, total: sentinelTotal, page: pagination.page, pageSize: pagination.pageSize });
+      res.json({ items: merged, total: operaiqTotal, page: pagination.page, pageSize: pagination.pageSize });
     })
   );
 
@@ -1637,18 +1461,18 @@ export function createApp(): express.Express {
     asyncHandler(async (req, res) => {
       const auth = (req as AuthenticatedRequest).auth ?? verifyAuth(req);
       const id = typeof req.params.id === "string" ? req.params.id : "";
-      if (!isSentinelId(id)) {
-        const sentinel = await getSentinelIncidentView(id, auth.orgId);
-        if (sentinel) {
-          res.json(sentinel);
+      if (!isOperaIQId(id)) {
+        const operaiq = await getOperaIQIncidentView(id, auth.orgId);
+        if (operaiq) {
+          res.json(operaiq);
           return;
         }
         res.status(403).json({ error: "Forbidden" });
         return;
       }
-      const sentinel = await getSentinelIncidentView(id, auth.orgId);
-      if (sentinel) {
-        res.json(sentinel);
+      const operaiq = await getOperaIQIncidentView(id, auth.orgId);
+      if (operaiq) {
+        res.json(operaiq);
         return;
       }
       res.status(403).json({ error: "Forbidden" });
@@ -1673,7 +1497,7 @@ export function createApp(): express.Express {
     "/incidents/:id/stream",
     asyncHandler(async (req, res) => {
       const incidentId = typeof req.params.id === "string" ? req.params.id : "";
-      if (!isSentinelId(incidentId)) {
+      if (!isOperaIQId(incidentId)) {
         res.status(400).end();
         return;
       }
@@ -1700,11 +1524,11 @@ export function createApp(): express.Express {
     requireAuth,
     asyncHandler(async (_req, res) => {
       const auth = (_req as AuthenticatedRequest).auth ?? verifyAuth(_req);
-      const [sentinelServices] = await Promise.all([
-        querySentinelCollection("services", 1_000, auth.orgId)
+      const [operaiqServices] = await Promise.all([
+        queryOperaIQCollection("services", 1_000, auth.orgId)
       ]);
       const byName = new Map<string, Record<string, unknown>>();
-      for (const service of sentinelServices.map(serializeSentinelService)) {
+      for (const service of operaiqServices.map(serializeOperaIQService)) {
         byName.set(asString(service.name), service);
       }
       const items = Array.from(byName.values()).sort((left, right) => asString(left.name).localeCompare(asString(right.name)));
@@ -1720,27 +1544,27 @@ export function createApp(): express.Express {
       const since = new Date();
       since.setHours(0, 0, 0, 0);
       const [
-        sentinelIncidentCount,
-        sentinelRunbookCount,
-        sentinelPatternCount,
-        sentinelIncidents,
-        sentinelRunbooks,
-        sentinelPostmortems
+        operaiqIncidentCount,
+        operaiqRunbookCount,
+        operaiqPatternCount,
+        operaiqIncidents,
+        operaiqRunbooks,
+        operaiqPostmortems
       ] = await Promise.all([
-        countSentinelCollection("incidents", auth.orgId),
-        countSentinelCollection("runbooks", auth.orgId),
-        countSentinelCollection("patterns", auth.orgId),
-        querySentinelCollection("incidents", 10_000, auth.orgId),
-        querySentinelCollection("runbooks", 5, auth.orgId),
-        querySentinelCollection("postmortems", 10, auth.orgId)
+        countOperaIQCollection("incidents", auth.orgId),
+        countOperaIQCollection("runbooks", auth.orgId),
+        countOperaIQCollection("patterns", auth.orgId),
+        queryOperaIQCollection("incidents", 10_000, auth.orgId),
+        queryOperaIQCollection("runbooks", 5, auth.orgId),
+        queryOperaIQCollection("postmortems", 10, auth.orgId)
       ]);
-      const sentinelOpen = sentinelIncidents.filter((incident) => incident.status === "open").length;
-      const sentinelInProgress = sentinelIncidents.filter((incident) => incident.status === "in_progress").length;
-      const sentinelResolvedToday = sentinelIncidents.filter((incident) => {
+      const operaiqOpen = operaiqIncidents.filter((incident) => incident.status === "open").length;
+      const operaiqInProgress = operaiqIncidents.filter((incident) => incident.status === "in_progress").length;
+      const operaiqResolvedToday = operaiqIncidents.filter((incident) => {
         if (incident.status !== "resolved") return false;
         return timestampMs(incident.resolvedAt ?? incident.updatedAt ?? incident.createdAt) >= since.getTime();
       }).length;
-      const brainGrowth = sentinelIncidents
+      const brainGrowth = operaiqIncidents
         .filter((incident) => incident.status === "resolved")
         .sort((left, right) => timestampMs(left.resolvedAt ?? left.updatedAt ?? left.createdAt) - timestampMs(right.resolvedAt ?? right.updatedAt ?? right.createdAt))
         .slice(-10)
@@ -1757,16 +1581,16 @@ export function createApp(): express.Express {
           };
         });
       const mergedPostmortems = [
-        ...sentinelPostmortems.map(serializeSentinelPostmortem)
+        ...operaiqPostmortems.map(serializeOperaIQPostmortem)
       ]
         .sort((left, right) => timestampMs(right.createdAt) - timestampMs(left.createdAt))
         .slice(0, 5);
       res.json({
-        incidentCount: sentinelIncidentCount,
-        runbookCount: sentinelRunbookCount,
-        patternCount: sentinelPatternCount,
-        statusCounts: { open: sentinelOpen, inProgress: sentinelInProgress, resolvedToday: sentinelResolvedToday },
-        topIncidentTypes: [...sentinelRunbooks].slice(0, 5).map((runbook, index) => ({
+        incidentCount: operaiqIncidentCount,
+        runbookCount: operaiqRunbookCount,
+        patternCount: operaiqPatternCount,
+        statusCounts: { open: operaiqOpen, inProgress: operaiqInProgress, resolvedToday: operaiqResolvedToday },
+        topIncidentTypes: [...operaiqRunbooks].slice(0, 5).map((runbook, index) => ({
           name: "incidentType" in runbook && typeof runbook.incidentType === "string" ? runbook.incidentType : asString(runbook.title),
           count: Math.max(1, 5 - index)
         })),
@@ -1782,8 +1606,8 @@ export function createApp(): express.Express {
     asyncHandler(async (_req, res) => {
       const auth = (_req as AuthenticatedRequest).auth ?? verifyAuth(_req);
       const [incidents, auditEntries, serviceHealth] = await Promise.all([
-        querySentinelCollection("incidents", 10_000, auth.orgId),
-        querySentinelCollection("audit_log", 500, auth.orgId),
+        queryOperaIQCollection("incidents", 10_000, auth.orgId),
+        queryOperaIQCollection("audit_log", 500, auth.orgId),
         serviceHealthFromQdrant(auth.orgId)
       ]);
       const activeIncidents = incidents.filter((incident) => incident.status === "open" || incident.status === "in_progress").length;

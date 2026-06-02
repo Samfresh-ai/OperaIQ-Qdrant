@@ -1,8 +1,8 @@
 import { JobsClient } from "@google-cloud/run";
 import { WebClient } from "@slack/web-api";
-import { qdrantMemoryPut, qdrantMemoryQuery, qdrantMemorySend } from "@sentinel/splunk-mcp";
-import { executeRemediationInputSchema, type ExecuteRemediationResult, type RemediationAction, type RiskLevel } from "@sentinel/shared";
-import { assertProductionSafeRuntime, canUseLocalVerificationEffect } from "@sentinel/shared";
+import { qdrantMemoryPut, qdrantMemoryQuery, qdrantMemorySend } from "@operaiq/qdrant-mcp";
+import { executeRemediationInputSchema, type ExecuteRemediationResult, type RemediationAction, type RiskLevel } from "@operaiq/shared";
+import { assertProductionSafeRuntime, canUseLocalVerificationEffect } from "@operaiq/shared";
 import { getAgentEnv } from "../env.js";
 import { executeRemediationSchema, type AgentToolDefinition } from "../tool-json-schemas.js";
 import { asString, asStringArray, invocationFailed, invocationFinished, invocationStarted } from "./common.js";
@@ -37,14 +37,14 @@ function agentName(): string {
 function cloudRunJobResource(action: RemediationAction): string {
   const env = getAgentEnv();
   if (!env.GOOGLE_CLOUD_PROJECT_ID) {
-    throw new Error("GOOGLE_CLOUD_PROJECT_ID is required when SENTINEL_REMEDIATION_BACKEND=cloud-run");
+    throw new Error("GOOGLE_CLOUD_PROJECT_ID is required when OPERAIQ_REMEDIATION_BACKEND=cloud-run");
   }
   const jobName = `${env.CLOUD_RUN_REMEDIATION_JOB_PREFIX}-${action.replaceAll("_", "-")}`;
   return `projects/${env.GOOGLE_CLOUD_PROJECT_ID}/locations/${env.GOOGLE_CLOUD_REGION}/jobs/${jobName}`;
 }
 
 function remediationBackend(): "cloud-run" | "admin-endpoint" {
-  return getAgentEnv().SENTINEL_REMEDIATION_BACKEND;
+  return getAgentEnv().OPERAIQ_REMEDIATION_BACKEND;
 }
 
 function slackClient(): WebClient {
@@ -132,7 +132,7 @@ async function logExecution(input: {
     };
     await qdrantMemoryPut("remediation_executions", null, document, input.orgId);
     await qdrantMemorySend({
-      sourcetype: "operaiq:remediation",
+      eventType: "operaiq:remediation",
       event: {
         type: "remediation_execution",
         ...document,
@@ -143,7 +143,7 @@ async function logExecution(input: {
   }
 
   await qdrantMemorySend({
-    sourcetype: "operaiq:remediation",
+    eventType: "operaiq:remediation",
     event: {
       type: "remediation_execution",
       action: input.action,
@@ -235,7 +235,7 @@ function jobEnv(input: {
 }): Array<{ name: string; value: string }> {
   const env = getAgentEnv();
   if (!env.GOOGLE_CLOUD_PROJECT_ID) {
-    throw new Error("GOOGLE_CLOUD_PROJECT_ID is required when SENTINEL_REMEDIATION_BACKEND=cloud-run");
+    throw new Error("GOOGLE_CLOUD_PROJECT_ID is required when OPERAIQ_REMEDIATION_BACKEND=cloud-run");
   }
   return [
     { name: "REMEDIATION_ACTION", value: input.action },
@@ -285,7 +285,7 @@ async function dispatchAdminEndpoint(
   const env = getAgentEnv();
   const secret = env.AGENT_TOOL_SECRET ?? env.WEBHOOK_SECRET;
   if (!secret) {
-    throw new Error("AGENT_TOOL_SECRET or WEBHOOK_SECRET is required when SENTINEL_REMEDIATION_BACKEND=admin-endpoint");
+    throw new Error("AGENT_TOOL_SECRET or WEBHOOK_SECRET is required when OPERAIQ_REMEDIATION_BACKEND=admin-endpoint");
   }
   const endpoint = `${config.adminBaseUrl.replace(/\/+$/, "")}/admin/remediation`;
   const response = await fetch(endpoint, {
@@ -293,7 +293,7 @@ async function dispatchAdminEndpoint(
     headers: {
       Authorization: `Bearer ${secret}`,
       "Content-Type": "application/json",
-      "x-sentinel-tool-secret": secret
+      "x-operaiq-tool-secret": secret
     },
     body: JSON.stringify({
       action,
