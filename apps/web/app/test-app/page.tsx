@@ -34,6 +34,8 @@ function hardFailureLogs(project: Project): ProjectLogInput[] {
       projectName: project.name,
       queueDepth: 918,
       poolWaiters: 143,
+      workerTimeoutMs: 30000,
+      dependencyHealth: "degraded",
       tenant: "human-browser-test"
     }
   };
@@ -44,7 +46,7 @@ function hardFailureLogs(project: Project): ProjectLogInput[] {
       statusCode: 503,
       latencyMs: 4812,
       timestamp: new Date(now - 6200).toISOString(),
-      message: "ECONNRESET while reserving checkout inventory; Redis connection pool exhausted before payment authorization.",
+      message: "Redis ECONNRESET spike while reserving checkout inventory; connection pool exhausted before payment authorization.",
       stack: "RedisConnectionPoolExhausted: ECONNRESET payment-service checkout reservation\n    at reserveInventory (/srv/app/checkout/reserve.ts:118:21)\n    at confirmCheckout (/srv/app/routes/checkout.ts:77:13)"
     },
     {
@@ -53,8 +55,8 @@ function hardFailureLogs(project: Project): ProjectLogInput[] {
       statusCode: 503,
       latencyMs: 5294,
       timestamp: new Date(now - 5100).toISOString(),
-      message: "UnhandledPromiseRejection: ECONNRESET from redis-cache after 143 pool waiters; checkout confirmation failed.",
-      stack: "UnhandledPromiseRejection: Redis socket closed during MULTI EXEC\n    at RedisPipeline.exec (/srv/app/lib/redis.ts:44:17)\n    at confirmCheckout (/srv/app/routes/checkout.ts:91:9)"
+      message: "Redis connection pool exhaustion after 143 waiters; checkout confirmation returned 503.",
+      stack: "UnhandledPromiseRejection: Redis socket ECONNRESET during MULTI EXEC\n    at RedisPipeline.exec (/srv/app/lib/redis.ts:44:17)\n    at confirmCheckout (/srv/app/routes/checkout.ts:91:9)"
     },
     {
       ...base,
@@ -62,7 +64,7 @@ function hardFailureLogs(project: Project): ProjectLogInput[] {
       statusCode: 500,
       latencyMs: 6077,
       timestamp: new Date(now - 4100).toISOString(),
-      message: "FATAL checkout write collapse: ECONNRESET, pool waiters 143, circuit breaker open, payment-service cannot finalize orders.",
+      message: "FATAL checkout write collapse: ECONNRESET, queue backlog 918, circuit breaker open, payment-service cannot finalize orders.",
       stack: "FatalCheckoutWriteCollapse: payment-service Redis ECONNRESET storm\n    at writeOrderLedger (/srv/app/orders/ledger.ts:203:11)\n    at confirmCheckout (/srv/app/routes/checkout.ts:109:15)"
     },
     {
@@ -71,8 +73,8 @@ function hardFailureLogs(project: Project): ProjectLogInput[] {
       statusCode: 502,
       latencyMs: 4419,
       timestamp: new Date(now - 3200).toISOString(),
-      message: "ECONNRESET repeated on redis-cache pipeline; retry budget exhausted for checkout ledger write.",
-      stack: "RetryBudgetExhausted: redis-cache ECONNRESET after 5 attempts\n    at retryPipeline (/srv/app/lib/retry.ts:58:9)"
+      message: "Worker timeout while draining checkout queue backlog; ECONNRESET repeated on redis-cache pipeline.",
+      stack: "CheckoutWorkerTimeout: worker exceeded 30000ms while retrying redis ECONNRESET\n    at drainCheckoutQueue (/srv/app/workers/checkout-drain.ts:88:13)\n    at retryPipeline (/srv/app/lib/retry.ts:58:9)"
     },
     {
       ...base,
@@ -80,8 +82,8 @@ function hardFailureLogs(project: Project): ProjectLogInput[] {
       statusCode: 503,
       latencyMs: 5733,
       timestamp: new Date(now - 2300).toISOString(),
-      message: "payment-service p99 latency breached 5s while ECONNRESET errors saturate Redis checkout sessions.",
-      stack: "LatencyBudgetExceeded: checkout p99=5733ms redis ECONNRESET\n    at recordLatency (/srv/app/metrics.ts:32:5)"
+      message: "Degraded dependency: redis-cache stale sockets pushed payment-service p99 above 5s during ECONNRESET storm.",
+      stack: "DependencyDegraded: redis-cache ECONNRESET checkout p99=5733ms\n    at recordLatency (/srv/app/metrics.ts:32:5)"
     },
     {
       ...base,
@@ -89,8 +91,8 @@ function hardFailureLogs(project: Project): ProjectLogInput[] {
       statusCode: 500,
       latencyMs: 6488,
       timestamp: new Date(now - 1400).toISOString(),
-      message: "ECONNRESET and connection pool exhausted during order finalization; customer checkout failed after payment token created.",
-      stack: "OrderFinalizationFailed: token created but ledger write failed\n    at finalizeOrder (/srv/app/orders/finalize.ts:149:19)"
+      message: "Stack-only Redis failure captured; user-facing message omitted the key fingerprint.",
+      stack: "RedisConnectionPoolExhausted: ECONNRESET during order finalization after payment token created\n    at RedisPool.acquire (/srv/app/lib/redis-pool.ts:66:11)\n    at finalizeOrder (/srv/app/orders/finalize.ts:149:19)"
     },
     {
       ...base,
