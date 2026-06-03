@@ -370,6 +370,32 @@ function internalApiBaseUrl(): string {
   return (process.env.OPERAIQ_INTERNAL_API_URL ?? `http://127.0.0.1:${process.env.PORT ?? "3001"}`).replace(/\/+$/, "");
 }
 
+function isLocalApiUrl(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+function projectRuntimeApiBaseUrl(): string {
+  const candidates = [
+    process.env.API_PUBLIC_URL,
+    process.env.NEXT_PUBLIC_API_URL,
+    process.env.PUBLIC_APP_URL,
+    process.env.WEB_PUBLIC_URL,
+    process.env.AGENT_TOOL_EXECUTION_BASE_URL,
+    process.env.OPERAIQ_INTERNAL_API_URL
+  ]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+  const selected = isProductionRuntime()
+    ? candidates.find((value) => !isLocalApiUrl(value)) ?? candidates[0]
+    : candidates[0];
+  return (selected ?? internalApiBaseUrl()).replace(/\/+$/, "");
+}
+
 function normalizeToken(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
 }
@@ -495,7 +521,7 @@ async function ensureProjectRuntimeMemory(input: {
       _key: `${input.projectId}-${input.service}-runtime`,
       orgId: input.orgId,
       serviceName: input.service,
-      adminBaseUrl: internalApiBaseUrl(),
+      adminBaseUrl: projectRuntimeApiBaseUrl(),
       incidentChannel: "local-verify",
       cloudRunServiceName: input.service,
       projectId: input.projectId,
@@ -511,7 +537,7 @@ async function ensureProjectRuntimeMemory(input: {
       _key: `${input.projectId}-redis-cache-runtime`,
       orgId: input.orgId,
       serviceName: "redis-cache",
-      adminBaseUrl: internalApiBaseUrl(),
+      adminBaseUrl: projectRuntimeApiBaseUrl(),
       incidentChannel: "local-verify",
       cloudRunServiceName: "redis-cache",
       projectId: input.projectId,
